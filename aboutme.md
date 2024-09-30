@@ -8,7 +8,7 @@ My name is Yucehn Jiang. I am now a second year master student majoring in Elect
 
 And here is something I haven't mentioned on my resume:
 
-- My favorite music genre are mid-west emo, shoegaze, math rock, and post-rock.
+- My favorite music genres are mid-west emo, shoegaze, math rock, and post-rock.
 - I'm quite confident in my cooking skills, especially in **authentic** Chinese cuisine (eastern China style).
 - Biking is my first choice of transportation since my high school.
 - I'm also a sub-culture enthusiast, I love to watch anime, read manga, but not very good at playing games.
