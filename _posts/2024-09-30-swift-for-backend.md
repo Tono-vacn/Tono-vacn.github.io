@@ -7,6 +7,7 @@ thumbnail-img: /assets/img/swift_icon.png
 # share-img: /assets/img/path.jpg
 tags: [Backend, Swift, Programming Language, Server Side, Concurrency, Vapor, SwiftNIO]
 author: Yuchen Jiang
+readtime: true
 ---
 
 ## Introduction
@@ -28,7 +29,7 @@ For different components of a backend server, we will also compare the Swift sol
   - [NoSQL](#nosql)
 - [Web Frameworks](#web-frameworks)
 - [Multi-threading and Concurrency](#multi-threading-and-concurrency)
-- [Data structure for concurrency control \& race condition](#data-structure-for-concurrency-control--race-condition)
+- [Data structure for concurrency control](#data-structure-for-concurrency-control)
 - [Swift NIO](#swift-nio)
 - [Conclusion](#conclusion)
 
@@ -174,7 +175,7 @@ So, here are the basic methods to handle multi-threading and concurrency in Swif
 
 So the real problem here is that, comparing to traditional backend languages like Golang or Java, Developers don't need to care or even unable to control the threads management. The low-level concurrency control is handled by the system, and developers can't control any part of the process.
 
-## Data structure for concurrency control & race condition
+## Data structure for concurrency control
 
 - NSLock: NSLock is a basic lock mechanism in Swift. 
 - DispatchSemaphore: DispatchSemaphore is a semaphore mechanism in Swift. It can be used to control the number of concurrent tasks.

@@ -7,6 +7,7 @@ thumbnail-img: /assets/img/image-compression.webp
 # share-img: /assets/img/path.jpg
 tags: [Frontend, Browser, Digital Image Processing, JavaScript, Canvas]
 author: Yuchen Jiang
+readtime: true
 ---
 
 <!-- # Optimizing PNG Compression and Converting to WebP: A Comprehensive Guide -->

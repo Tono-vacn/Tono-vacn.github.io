@@ -7,6 +7,7 @@ thumbnail-img: /assets/img/coupling.png
 # share-img: /assets/img/path.jpg
 tags: [Backend, Server Software, Micro-service, Design Pattern]
 author: Yuchen Jiang
+readtime: true
 ---
 
 ## Introduction
