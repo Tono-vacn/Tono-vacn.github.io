@@ -38,40 +38,40 @@ readtime: true
 - computed variables:
   - Variables can be stored or computed ( get and set routines)
   - Stored variables can have *setter observers* ( willSet, didSet )
-  ```swift
-  var now : String {
-    get {
-        return NSDate().description
-      }
-  }
-  print(now)
+    ```swift
+    var now : String {
+      get {
+          return NSDate().description
+        }
+    }
+    print(now)
 
-  struct lotsize {
-      var acres : Float
-      
-      init(acres: Float) {
-          self.acres = acres
-      }
-      var sqft : Float {
-          get {
-              return acres * (200*220)
-          }
-          set {
-              self.acres = newValue / (200*220)
-          }
-      }
-  }
+    struct lotsize {
+        var acres : Float
+        
+        init(acres: Float) {
+            self.acres = acres
+        }
+        var sqft : Float {
+            get {
+                return acres * (200*220)
+            }
+            set {
+                self.acres = newValue / (200*220)
+            }
+        }
+    }
 
-  var myLotSize = lotsize(acres: 3)
+    var myLotSize = lotsize(acres: 3)
 
-  print(myLotSize.sqft)
+    print(myLotSize.sqft)
 
-  myLotSize.sqft = 200000
-  print(myLotSize.acres)
-  myLotSize.acres = 10
-  print(myLotSize.acres)
-  print(myLotSize.sqft)
-  ```
+    myLotSize.sqft = 200000
+    print(myLotSize.acres)
+    myLotSize.acres = 10
+    print(myLotSize.acres)
+    print(myLotSize.sqft)
+    ```
 
 - Identity Operators:
   - `===` and `!==` are used to check if two objects are the same instance
@@ -380,26 +380,26 @@ readtime: true
 
 - @Binding 
   - use the @Binding property wrapper to pass a value from a parent view to a child view
-  ```swift
+    ```swift
     struct HornButton: View  {
-    @Binding var hornPlayedCount: Int
+      @Binding var hornPlayedCount: Int
 
-    var body: some View {
-        Button("\(hornPlayedCount) times") {
-        hornPlayedCount += 1
-        }
+      var body: some View {
+          Button("\(hornPlayedCount) times") {
+          hornPlayedCount += 1
+          }
+      }
     }
-  }
 
-  struct CarView: View  {
-    @State private var hornCount: Int = 0
+    struct CarView: View  {
+      @State private var hornCount: Int = 0
 
-    var body: some View {
-        Text("Your car has honked: ")
-        HornButton(hornPlayedCount: $hornCount)
+      var body: some View {
+          Text("Your car has honked: ")
+          HornButton(hornPlayedCount: $hornCount)
+      }
     }
-  }
-  ```
+    ```
 
 - Objects
   - ObservableObject: a protocol that allows you to publish changes to your object
