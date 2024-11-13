@@ -324,6 +324,11 @@ The above two code snippets are doing the same thing
   ![chunksize2](/assets/img/parallel-chunksize2.png)
   ![chunksize3](/assets/img/parallel-chunksize3.png)
 
+### OpenMP Memory Model
+
+
+
+
 ## Parallel Programming Issuses
 
 - Correctness
@@ -390,14 +395,16 @@ Overhead and Scalability factors in parallel programming
 Here in the example we assume three different ways to map the nodes into processors. Each side of the square indicate N elements.
 
 - Block-wise partitioning
-  $$
-  CCR = \frac{\text{Comm}}{\text{Comp}} = \frac{\frac{4n}{\sqrt{p}}}{\frac{n^2}{p}} = \frac{4 \sqrt{p}}{n}
-  $$
+  
+    $$
+      CCR = \frac{\text{Comm}}{\text{Comp}} = \frac{\frac{4n}{\sqrt{p}}}{\frac{n^2}{p}} = \frac{4 \sqrt{p}}{n}
+    $$
 
 - Row-wise partitioning
-  $$
-  CCR = \frac{\text{Comm}}{\text{Comp}} = \frac{\frac{2n}{\sqrt{p}}}{\frac{n^2}{p}} = \frac{2p}{n}
-  $$
+  
+    $$
+      CCR = \frac{\text{Comm}}{\text{Comp}} = \frac{\frac{2n}{\sqrt{p}}}{\frac{n^2}{p}} = \frac{2p}{n}
+    $$
 
 ### Memory Hierachy Issue
 
