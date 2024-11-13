@@ -326,8 +326,65 @@ The above two code snippets are doing the same thing
 
 ### OpenMP Memory Model
 
+- relaxed-consistency
+  - Each thread can have its own temporary view of memory
+  - thread’s temporary view of memory is not required to be consistent with memory
+  - Update to shared memory from one thread may not be seen by the other thread “immediately”
+- shared memory
+  - All threads share a single store called memory
+  - May not actually represent RAM
 
+#### Ensure Consistent View of Memory
 
+- `flush`: ensure that all threads have a consistent view of memory
+  - `#pragma omp flush(list)`
+  - `list` is a comma-separated list of variables
+  - example
+    ```c++
+      #pragma omp parallel
+      {
+        //…
+        #pragma omp flush(A)
+        //…
+      }
+    ```
+  - orders: 
+    - Those before the flush complete before the flush executes
+    - Those after the flush complete after the flush executes
+    - Flushes with overlapping flush-sets cannot be reordered
+      ```c++
+        void thread1() {
+            shared_var = 42;   
+            #pragma omp flush(shared_var) 
+        }
+
+        void thread2() {
+            int local_var;
+            #pragma omp flush(shared_var) 
+            local_var = shared_var;
+            printf("Thread 2 reads shared_var: %d\n", local_var);
+        }
+      ```
+
+### OpenMP Task Directive
+
+`#pragma omp task [clause[ [,] clause]...]` 
+- Generates a task for a thread in the team to run
+- When a thread enters the region it may
+  - Immediately execute the task, or
+  - Defer its execution (another thread may be assigned the task)
+- clauses:
+  - if, final, untied, default, mergeable, private, firstprivate, shared
+  - `if`: When expression is false, generates an undeferred task
+  - `final`: When expression is true, generates a final task
+    - All tasks within a final task are included
+    - Included tasks are undeferred and also execute immediately in the same thread
+  - `untied`: Task is not tied to the thread that created it
+  - `mergeable`: Task can be merged with the current task
+- Three Logical Task Concepts:
+  - Deferred Task: generates a new task, Put the task on the task queue for any thread to execute
+  - Undeferred Task: suspends its current task, executes newly encountered task, may resume its previously suspended task
+  - Included Task: simply merges the task into its current task
 
 ## Parallel Programming Issuses
 
