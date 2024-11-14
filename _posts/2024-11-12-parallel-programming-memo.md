@@ -570,3 +570,118 @@ at each hierarchy level
   - ` pthread_barrier_t barrier = PTHREAD_BARRIER_INITIALIZER(count);`
   - `int pthread_barrier_init(pthread_barrier_t *barrier, const pthread_barrierattr_t *attr, unsigned count);`
   - `int pthread_barrier_wait(pthread_barrier_t *barrier);`
+
+## Parallel Programming for Linked Data Structures
+
+- Split traversal step from processing step(s)
+- Master thread traverses the list
+- Creates a child thread to process each node as required
+
+- Parallel Strategy
+  - Global lock approach
+    - Each operation logically has two steps
+      - Traversal
+      - Modification
+    - perform the traversal in parallel, but list modification in a critical section
+      ```c++
+        IntListNode_Insert(node *p) {
+          /* perform traversal */
+          acq_write_lock();
+          /* then check validity: 
+            (1) nodes still there,
+            (2) link still valid */
+          /* if not valid, repeat traversal */
+          /* if valid, modify list */
+          if (prev->next != p || prev->deleted || p->deleted)
+            /* repeat list traversal step */
+          else
+            /* insert node */
+          //…
+          rel_write_lock();
+        }
+      ```
+  - Fine-grained lock approach
+    - Associate each node with a lock (read, write)
+    - (Read and write) operations execute in parallel except when they conflict on some nodes
+    - Deadlocks can be avoided by imposing a global lock acquisition order
+      - Careful ordering of lock acquisition must be enforced: always acquire locks for nodes from left to right in list
+        ```c++
+          void Insert(pIntList pList, int x) {
+            int succeed;
+            // traversal code to find insertion point
+            succeed = 0;
+            do {
+              acq_write_lock(prev);
+              acq_read_lock(p);
+              if (prev->next != p || prev->deleted || p->deleted) {
+                rel_write_lock(prev);
+                rel_read_lock(p);
+              //Repeat traversal; return if not found
+              } else
+              succeed = 1;
+            } while (!succeed)
+
+            newNode->next = p;
+            if (prev != NULL)
+              prev->next = newNode;
+            else
+              pList->head = newNode;
+            rel_write_lock(prev); rel_read_lock(p);
+          }
+        ```
+
+## Memory Consistency
+
+- Cache Coherence
+  - deals with ordering of writes to a single memory location
+  - only needed for systems with caches
+- Memory consistency
+  - deals with ordering of reads/writes to all memory locations
+  - concerns systems with or without caches
+
+### Programmers' Intuition
+
+- Program order expectation
+  - programmers expect that the order in which memory accesses are executed in a thread follows the order in which they occur in the source code
+- Atomicity expectation
+  - An expectation that a read/write happens instantaneously/instantly with respect to all processors
+
+- Memory accesses coming out of a processor should be performed in program order, and each of them should be performed atomically
+
+- Sequential Consistency
+  - programmers’ expectations have been found to fit closely to Sequential Consistency (SC)
+  - ![SC](/assets/img/memory-SC.png)
+  
+
+### Building SC systems
+
+- Program order
+  - compiler does not reorder memory accesses
+  - Declare critical variables as volatile
+- Atomicity
+  - Execute one memory access one at a time, in program order
+- Performance：Limited by Strict Ordering Requirements
+    
+  ![SC-implications](/assets/img/memory-SC-implications.png)
+
+### Relaxed Consistency Models
+
+Allows “some” memory accesses to be reordered or overlapped
+- Safety Nets
+  - Fence instruction ensures ordering between preceding load/store and following load/store
+- Relaxed consistency models
+  - Processor Consistency (PC)
+  - Weak ordering (WO)
+  - Acquire / Release Consistency (RC)
+  -  Lazy Release Consistency (LRC)
+
+#### Implementation of Memory Fence
+
+- Fence ensures that mem ops that are younger are not issued until the older mem ops have globally performed
+  - Wait until all older writes have been posted on the bus
+  - Wait until all older reads have completed
+  - Flush the pipeline to avoid issuing younger mem ops early
+
+#### Processor Consistency (PC)
+
+  ![PC](/assets/img/PC.png)
