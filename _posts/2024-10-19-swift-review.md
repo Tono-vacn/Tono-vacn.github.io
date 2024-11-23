@@ -10,6 +10,19 @@ author: Yuchen Jiang
 readtime: true
 ---
 
+## Table of Contents
+- [Table of Contents](#table-of-contents)
+- [Overview of Swift](#overview-of-swift)
+- [More on Swift](#more-on-swift)
+- [SwiftData](#swiftdata)
+- [MVC and MVVM](#mvc-and-mvvm)
+- [PersistentStorage](#persistentstorage)
+- [Communication](#communication)
+- [Other Concepts](#other-concepts)
+- [SwiftUI](#swiftui)
+- [Graphics and Animation](#graphics-and-animation)
+
+
 ## Overview of Swift
 
 - single line of declaration:

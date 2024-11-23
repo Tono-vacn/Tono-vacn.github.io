@@ -14,6 +14,51 @@ author: Yuchen Jiang
 readtime: true
 ---
 
+## Table of Contents
+- [Table of Contents](#table-of-contents)
+- [Creating a Parallel Program](#creating-a-parallel-program)
+  - [Code Analysis](#code-analysis)
+  - [Algorithm Analysis](#algorithm-analysis)
+  - [Determining Viriable Scope](#determining-viriable-scope)
+  - [Task Mapping](#task-mapping)
+- [OpenMP Programming](#openmp-programming)
+  - [OpenMP Usage](#openmp-usage)
+  - [OpenMP API functions](#openmp-api-functions)
+  - [OpenMP SCHEUDLE directive](#openmp-scheudle-directive)
+  - [OpenMP Memory Model](#openmp-memory-model)
+    - [Ensure Consistent View of Memory](#ensure-consistent-view-of-memory)
+  - [OpenMP Task Directive](#openmp-task-directive)
+- [Parallel Programming Issuses](#parallel-programming-issuses)
+  - [Result Preservation](#result-preservation)
+  - [Synchronization Points and Types](#synchronization-points-and-types)
+  - [Variable Partitioning](#variable-partitioning)
+  - [Parallel Task Granularity](#parallel-task-granularity)
+  - [Syncronization Granularity](#syncronization-granularity)
+- [Inherent vs. Artifactual Communication](#inherent-vs-artifactual-communication)
+  - [Communication-to-Computation Ratio](#communication-to-computation-ratio)
+  - [Memory Hierachy Issue](#memory-hierachy-issue)
+    - [Exploiting Spatial Locality at Page Level](#exploiting-spatial-locality-at-page-level)
+- [Syncronization](#syncronization)
+- [Pthread](#pthread)
+- [Parallel Programming for Linked Data Structures](#parallel-programming-for-linked-data-structures)
+- [Memory Consistency](#memory-consistency)
+  - [Programmers' Intuition](#programmers-intuition)
+  - [Building SC systems](#building-sc-systems)
+  - [Relaxed Consistency Models](#relaxed-consistency-models)
+    - [Implementation of Memory Fence](#implementation-of-memory-fence)
+    - [Processor Consistency (PC)](#processor-consistency-pc)
+- [Lock Free Data Structures](#lock-free-data-structures)
+  - [C++ Memory Model Support](#c-memory-model-support)
+  - [Lock-Free Data Structures](#lock-free-data-structures-1)
+    - [Lock-Free LinkedList::addFront](#lock-free-linkedlistaddfront)
+    - [Lock-Free LinkedList::addSorted](#lock-free-linkedlistaddsorted)
+    - [Lock-Free LinkedList::removeFront](#lock-free-linkedlistremovefront)
+- [Programming for Clusters](#programming-for-clusters)
+  - [MPI (Message Passing Interface)](#mpi-message-passing-interface)
+  - [MapReduce](#mapreduce)
+    - [OverView](#overview)
+
+
 ## Creating a Parallel Program
 
 - Task Creation:  identifying parallel tasks, variable scopes, synchronization
@@ -649,7 +694,7 @@ at each hierarchy level
 - Memory accesses coming out of a processor should be performed in program order, and each of them should be performed atomically
 
 - Sequential Consistency
-  - programmers’ expectations have been found to fit closely to Sequential Consistency (SC)
+  - programmers' expectations have been found to fit closely to Sequential Consistency (SC)
   - ![SC](/assets/img/memory-SC.png)
   
 
@@ -660,7 +705,7 @@ at each hierarchy level
   - Declare critical variables as volatile
 - Atomicity
   - Execute one memory access one at a time, in program order
-- Performance：Limited by Strict Ordering Requirements
+- Performance: Limited by Strict Ordering Requirements
     
   ![SC-implications](/assets/img/memory-SC-implications.png)
 
@@ -685,3 +730,211 @@ Allows “some” memory accesses to be reordered or overlapped
 #### Processor Consistency (PC)
 
   ![PC](/assets/img/PC.png)
+
+
+## Lock Free Data Structures
+
+### C++ Memory Model Support
+In C++ 11:
+- `std::atomic<T>`: atomic operations on type T
+  - `load()`, `store()`
+    - Default mode for loads/stores to atomics is sequential consistency
+      - Likely expensive to enforce
+      - compiler may just insert fences (memory barriers)
+    - `std::memory_order_relaxed`
+      - Atomicity is provided, but any reordering is possible
+      - Much Faster
+    - `std::memory_order_acquire`
+      - Atomicity is provided, and also ordering
+      - less overhead in a general program
+
+### Lock-Free Data Structures
+
+```c++
+  class LinkedList {
+    class Node{
+    public:
+      const int data;
+      std::atomic<Node *> next;
+      Node(int d): data(d), next(nullptr) { }
+      Node(int d, Node * n): data(d), next(n) { }
+      ~Node() { }
+    };
+    std::atomic<Node*> head;
+    //...
+  };
+```
+
+#### Lock-Free LinkedList::addFront
+
+![Lock-free-list](/assets/img/lock-free-linked.png)
+
+- `std::memory_order_acq_rel` for `head.compare_exchange_weak()`
+  - Acquire and Release Semantics
+
+    - Acquire semantics
+      - Ensures that all memory operations before the acquire operation are completed before the acquire operation
+    - Release semantics
+      - Ensures that all memory operations after the release operation are completed after the release operation
+
+    ![Acquire-Release](/assets/img/Acquire-release.png)
+
+  - `std::memory_order_acq_rel`
+    - Both acquire and release semantics
+      - Acquire semantics for the load: can see all memory writes before the load
+      - Release semantics for the store: momery operations of current thread are visible to other threads after the store
+    - Why `std::memory_order_acq_rel`?
+      - Load: will read head pointer, need to ensure head is the latest value (Acquire)
+      - Store: If head is updated successfully, need to ensure that all memory operations of current thread are visible to other threads (Release)
+- `std::memory_order_relaxed` for `temp->next.store`
+  - temp is private to the thread
+  - next step is CAS with `std::memory_order_acq_rel`, will ensure that the store is visible to other threads
+  - So we can use `std::memory_order_relaxed` here
+- `std::memory_order_relaxed` for `head.load()`
+  - CAS will perform acquire, and fail if head is changed
+  - so simply load head with `std::memory_order_relaxed`
+
+#### Lock-Free LinkedList::addSorted
+
+![Lock-free-list2](/assets/img/lock-free-linked-addSorted.png)
+
+- Why not use `std::memory_order_seq_cst` for all operations?
+  - right for correctness, but too expensive
+
+#### Lock-Free LinkedList::removeFront
+
+![Lock-free-list3](/assets/img/lock-free-linked-removeFront.png)
+
+![Lock-free-list4](/assets/img/lock-free-linked-removeFront_Exp.png)
+
+- Difficult to clean up memory
+  - Delete later as no other thread still references it
+  - Possibility for recycle: only if no other thread is referencing it
+
+- Solutions:
+  - ![Lock-free-list5](/assets/img/lock-free-memory-freeing.png)
+  - GC
+    - Stop the world
+    - Consider root sets from all threads
+
+## Programming for Clusters
+
+Distributed vs. Shared Memory
+- Shared memory
+  - Communication: implicit
+  - Synchronization: explicit
+- Distributed (clusters)
+  - Communication: explicit
+  - Synchronization: implicit
+
+### MPI (Message Passing Interface)
+
+A language-independent communication protocol for parallel-computers
+- Provides explicit message passing between nodes
+- ![MPI](/assets/img/MPI.png)
+- Uses SPMD computation model
+  - Single program, multiple data
+  - Multiple instances of a single program
+  - All work on different data at the same time
+- MPI facilitates data communication between processes
+- Program could run on one machine or cluster of machines
+  - one machine: using MPI for IPC
+  - cluster: using MPI for network communication
+
+- MPI Functions
+  ```c++
+    // Initialize MPI
+    int MPI_Init(int *argc, char **argv)
+    // Determine number of processes within a communicator
+    int MPI_Comm_size(MPI_Comm comm, int *size)
+    // Determine processor rank within a communicator
+    int MPI_Comm_rank(MPI_Comm comm, int *rank)
+    // Exit MPI (must be called last by all processors)
+    int MPI_Finalize()
+    // Send a message
+    int MPI_Send(void *buf, int count, MPI_Datatype datatype, int dest,
+    int tag, MPI_Comm comm)
+    // Receive a message
+    int MPI_Recv(void *buf, int count, MPI_Datatype datatype，int source,
+    int tag, MPI_Comm comm, MPI_Status *status)
+  ```
+  - `MPI_Comm`: communicator, `MPI_COMM_WORLD` for global channel
+  - `MPI_Datatype`: enum for data type, like `MPI_INT`
+  - `dest/source`: The “rank” of the process to send a message to / receive from
+  - Both MPI_Send and MPI_Recv are blocking calls
+  - tag allows for message organization, like filtering
+
+- Simple Example
+  -   ```c++
+        #include <stdio.h>
+        #include <mpi.h>
+        int main (int argc, char *argv[])
+        {
+          int rank, size;
+
+          MPI_Init(&argc, &argv);
+          MPI_Comm_rank(MPI_COMM_WORLD, &rank); //get current process id
+          MPI_Comm_size(MPI_COMM_WORLD, &size); //get number of processes
+          printf(“Hello World from process %d of %d\n”, rank, size);
+          MPI_Finalize();
+          return 0;
+        }
+      ```
+  - Controller-worker paradigm
+    - Controller (rank 0) process: Creates strings, Sends them to worker processes
+    - Worker processes: Modify their string, Send it back to the master
+
+- MPI Compile and Run:
+  - Compile
+    ```shell
+      mpirun –np <num_processors> <program>
+      mpiexec –np < num_processors> <program> # a synonym
+    ```
+  - Start processes
+    ```shell
+      > mpicc hello_mpi.c
+      > mpirun –np 4 a.out
+      0: We have 4 processors
+      0: Hello 1! Processor 1 reporting for duty
+      0: Hello 2! Processor 2 reporting for duty
+      0: Hello 3! Processor 3 reporting for duty
+    ```
+  - By default, MPI chooses lowest-latency communication resource available; shared memory in this case
+  - MPMD (Multiple Program, Multiple Data) execution
+    - `mpirun –np 2 a.out : –np 2 b.out`
+      - launches a single parallel application
+      - All in the same MPI_COMM_WORLD
+      - Ranks 0 and 1 are of instances a.out
+      - Ranks 2 and 3 are of instances b.out
+
+- Performance
+  - bottleneck is the message passing
+  - much longer latency and much less B/W
+
+### MapReduce
+
+MapReduce framework does several things
+- Runs tasks in parallel
+- Manages communication and data transfers
+- Provides redundancy and fault tolerance
+
+#### OverView
+
+- Consists of two functional operations: map and reduce
+  - Map: applies a function to an iterable data set
+  - Reduce: applies a function to an iterable data set cumulatively
+  
+- Map
+  - Split the input into multiple pieces
+  - Pieces are processed as (key, value) pairs
+  - Mapper function uses these (key, value) pairs outputs another set of (key, value) pairs
+- Reduce
+  - Collects the input from the previous map
+    - May be on different nodes and require copying
+  - Merge-sorts the input
+    - So that key-value pairs for a given key are contiguous
+  - Reads the input sequentially and splits values into lists of values with the same key
+  - Passes this data (keys and lists of values) to your reduce method (in parallel) and concatenates results
+- Combine
+  - Optional step
+  - Could do reduce step for in-memory values after map
