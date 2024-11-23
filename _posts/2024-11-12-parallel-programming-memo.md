@@ -9,12 +9,23 @@ tags: [
     Parallel Programming,
     OpenMP,
     Code Profiling,
+    Pthread,
+    MPI,
+    Lock-Free Data Structures,
+    Memory Consistency,
+    Syncronization,
+    MapReduce,
 ]
 author: Yuchen Jiang
 readtime: true
 ---
 
+## Introduction
+
+This is a note for parallel programming, including OpenMP, Pthread, and MPI.
+
 ## Table of Contents
+- [Introduction](#introduction)
 - [Table of Contents](#table-of-contents)
 - [Creating a Parallel Program](#creating-a-parallel-program)
   - [Code Analysis](#code-analysis)
