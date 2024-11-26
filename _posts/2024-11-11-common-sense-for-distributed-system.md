@@ -17,6 +17,41 @@ readtime: true
 
 This is a note for some basic concepts in distributed system.
 
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Table of Contents](#table-of-contents)
+- [RPC](#rpc)
+  - [Key Points](#key-points)
+- [Primary-Backup Replication](#primary-backup-replication)
+  - [Failure model](#failure-model)
+  - [Replicate Methods](#replicate-methods)
+    - [State transfer](#state-transfer)
+    - [Replicated state machine](#replicated-state-machine)
+  - [Replication Layer Choice](#replication-layer-choice)
+    - [Virtual Machine](#virtual-machine)
+    - [Why Virtual Machine?](#why-virtual-machine)
+  - [Design Details](#design-details)
+    - [How it runs with no failure](#how-it-runs-with-no-failure)
+    - [Logging](#logging)
+    - [Output requirement](#output-requirement)
+    - [Failure Detection](#failure-detection)
+- [MapReduce](#mapreduce)
+- [Chord](#chord)
+  - [Consistent Hashing](#consistent-hashing)
+  - [InterNode Communication](#internode-communication)
+    - [Finger table](#finger-table)
+  - [New Node Join](#new-node-join)
+    - [Step1: Initialize Finger Table of New Node](#step1-initialize-finger-table-of-new-node)
+    - [Step2: Update Finger Table of Existing Nodes](#step2-update-finger-table-of-existing-nodes)
+    - [Step:3 Transfer Keys](#step3-transfer-keys)
+    - [Stability During Node Join](#stability-during-node-join)
+    - [Performance during unstable period](#performance-during-unstable-period)
+  - [Node Failure Handling](#node-failure-handling)
+- [CDN](#cdn)
+  - [Reverse Proxy](#reverse-proxy)
+
+
 ## RPC
 
 - Calls a procedure at a different address space
@@ -31,3 +66,272 @@ from interface module
 
 - Binding: Check to make sure that the procedure descriptions match
 between the client and the server
+
+## Primary-Backup Replication
+
+### Failure model
+
+- Fail-stop faults: node/parts/processes stop executing but do not exhibit Byzantine behavior
+  - Stop executing
+  - Detectable
+  - No Byzantine behavior 
+  - Hardware failure: power outage, CPU overheating, network cable tripped
+  - Kernel panic
+
+- Byzantine faults: arbitrary behavior
+  - Bugs, adversaries, attacker
+  - Malicious: The node may attempt to disrupt the entire system intentionally.
+  - Complexity: These faults are among the most challenging to handle as they require the system to tolerate the worst-case scenario.
+  - Needs other methods: Byzantine fault tolerance, blockchain
+
+- Higher-scale deployment -> more failures -> less reliable
+  - Needs to assume different replicas fail independently
+
+![Failure-Model](/assets/img/faults-model.png)
+
+
+### Replicate Methods
+
+#### State transfer
+
+- Primary sends replicas the state of the primary
+
+#### Replicated state machine
+
+  - State changes are **“mostly” deterministic**
+  - Primary sends replicas the **external events**
+  - External events are smaller than states in terms of size
+
+
+  - Replicas must agree on a sequence of actions.
+    - A replicated log or ledger of requests (commands, ops).
+  - **Strong ordering condition**: important rule to ensure consistency and convergence
+    - Necessary for convergence: ensure all replicas end up in the same state
+    - Sufficient for convergence: for a deterministic program, if all replicas start in the same state and execute the same sequence of requests, they will end up in the same state.
+
+  - How to ensure a sequence?
+    - Consensus Algorithm
+    - Linearizability and Sequential Consistency
+    - Log Replication
+    - Timestamps
+    - Leader-Based Architecture
+    - Distributed Locks
+    - Conflict-Free Replicated Data Types (CRDTs)
+
+### Replication Layer Choice
+
+- Application-level replication
+  - Need careful application designs
+- Virtual Machine
+  - make non-fault-tolerant application become fault-tolerant in a transparent way
+
+#### Virtual Machine
+
+- Hypervisor: VMM
+  - Slide a hypervisor within/underneath the host OS kernel. (New OS layer: also called virtual machine monitor VMM)
+  - Run multiple guest VM instances on a shared computer
+    - Each VM is a sandboxed/isolated context for any entire OS
+    - VM instance “looks the same” to guest OS as a physical machine
+  - ![VMM](/assets/img/VMM.png)
+
+#### Why Virtual Machine?
+
+- Sharing resources
+- Isolation between different workloads
+- able to Run a different OS for legacy applications
+- checkpoint and migration
+
+### Design Details
+
+- low overhead
+  - runtime performance
+  - low network B/W usage
+- Easy to use
+  - Automated replication and failure recovery
+- ![replication-layer](/assets/img/replication.png)
+- ![vm-compose](/assets/img/vm-compose.png)
+- Ideal Status:
+  - If two deterministic state machines are **started in the same initial state** and provided the exact **same inputs in the same order**, then they will go through the same sequences of states and produce the same outputs
+
+#### How it runs with no failure
+
+- Keep primary and backup in sync
+- Log Inputs and non-deterministic events
+  - Network packets
+  - Interrupts
+  - Special operations (e.g., read clock time)
+  - Assumption: VM has a single core
+- Primary can output to the client
+- Backup’s output is dropped at the hypervisor
+![non-deterministic](/assets/img/non-determinist ic.png)
+- if the backup VM ever takes over after a
+failure of the primary, the backup VM will continue executing in
+a way that is entirely consistent with all outputs that the primary
+VM has sent to the external world
+- An external observer cannot “sense” the failure of the primary
+
+
+#### Logging
+- Inputs will be logged
+  - Network packets received
+- Non-deterministic events will be logged
+  - log the exact instruction at which the event occurred
+  - requires support from hardware
+  - Special instructions’ return value must be logged
+
+#### Output requirement
+
+- Output rule: the primary VM may not send an output to the external world, until the backup VM has received and acknowledged the log entry associated with the operation producing the output
+- Delay response from the primary to the client
+  - The backup must have all the information (i.e., log entries) needed to generate the output that the primary will generate
+![Backup-Output](/assets/img/BackupPrimarySync.png)
+
+- Output Rule does not say anything about
+stopping the execution of the primary VM. We need only delay the sending of the output, but the VM itself can continue execution
+
+- Output rule: a **relaxation** from truthy synchronized states
+  - allows for an efficient implementation of a primary-backup replication system
+
+#### Failure Detection
+
+- Heartbeat messages between primary and backup
+- Split Brain Problem: What if both primary and backup believe that they are the primary?
+  - Test-and-set on **shared storage** (similar to a acquire lock)
+  
+
+
+## MapReduce
+
+Real dull stuff, simply skip it.
+
+## Chord
+
+Peer-to-peer distributed protocol
+
+- System model
+  - Load balancing: data is evenly distributed across node based on a hash function
+  - Decentralization: no node is more important than any other
+  - Scalability: operations should have logarithmic cost with respect to the number of nodes
+  - Availability: handle node joins and failures
+  - Flexible naming: no constraints on the structure of keys
+- What Chord is for
+  - lookup (Key) -> IP address
+  - Notifies applications change of set of keys the node is responsible for
+- What’s not Chord’s responsibility
+  - Authentication, caching, replication, user-friendly naming
+- Example of Chord in Software
+  ![Chord](/assets/img/chordExample.png)
+
+### Consistent Hashing
+
+Chord uses consistent hashing to assign keys to nodes
+
+- `N` nodes and `K` keys
+  - each node is responsible for at most `(1+ε)K/N` keys
+  - node joins or leaves requires `O(K/N)` key changes hands
+  - How to reduce `ε`?
+    - Increase the number of virtual nodes
+    - More effective load balancing
+    - Better hash function
+
+### InterNode Communication
+
+Node receives a message, it will forward the message to the node responsible for the key
+
+- Choice: Every node knows of all other nodes
+  - `O(N)` Routing table size
+  - Lookup time: `O(1)`
+- Choice: Every node knows its successor in the ring
+  - Routing table size: `O(1)`
+  - Lookup time: `O(N)`
+- Chord: Every node knows `O(log N)` other nodes
+  - pointers in the routing table point to the successor node of `2^i`-th position in the ring
+  - ![finger-table](/assets/img/fingertable.png)
+  - ![finger-table-lookup](/assets/img/finger-table-lookup.png)
+
+#### Finger table
+
+- ![finger-table-api](/assets/img/finger-table-api.png)
+- Theorem 2: with high probability, the number of nodes that must be contacted to find a successor in an N-node network is
+`O(log N)`
+
+### New Node Join
+
+- New node `N` joins the network
+  - Initialize the predecessor and fingers of node n
+  - Update the fingers and predecessors of existing nodes to reflect the addition of n
+  - Notify higher layer software so that it can transfer state associate with keys that node n is now responsible for
+
+#### Step1: Initialize Finger Table of New Node
+
+![chord_add_new](/assets/img/chord_add_new.png)
+
+- utilize the existing node to look up the new node’s finger table
+
+#### Step2: Update Finger Table of Existing Nodes
+
+![chord_update](/assets/img/chord_update.png)
+
+- recursively update the finger table of existing nodes to reflect the addition of the new node
+
+#### Step:3 Transfer Keys
+
+- Transfer keys to the new node from successor node
+
+#### Stability During Node Join
+
+- Approach:
+  - Predecessors and successors are maintained
+  - Fingers can be updated later
+
+- Reason: 
+  - Theorem 4: once a node can successfully resolve a given query, it will always be able to do so in the future
+
+  - Theorem 5: at some time after the last join, all successor pointers will be correct.
+
+#### Performance during unstable period
+
+- Theorem 6: If we have a stable network of N nodes, adding another N nodes without finger tables, then lookup will still take `O(log N)`.
+
+- The speed of updating finger tables only need to match the speed of growing network to double in size.
+
+### Node Failure Handling
+
+- Node failure: a node is no longer reachable
+- Approach:
+  - Use the successor list to detect node failure
+    - Each node keeps a `r` list of its successors
+    - return the first live node in the successor list for find_successor query
+    - Theorem 7: with high probability, find_successor query will return the closest living successor
+    - Theorem 8: with high probability, find_successor query will return in `O(log N)`
+  - Heartbeat messages
+
+## CDN
+
+origin server -> CDN -> client
+
+- origin server: the server that hosts the original content
+- edge server: the server that hosts the cached content and is closer to the client
+- CDN: a network of edge servers that cache content
+
+![CDN](/assets/img/cdn.png)
+
+### Reverse Proxy
+
+- A server that sits between the client and the origin server
+- The client sends requests to the reverse proxy, which forwards the request to the origin server
+- The reverse proxy caches the response from the origin server and returns it to the client
+- Nginx, Apache, Varnish
+  - load balancing
+  - caching static content
+  - SSL termination
+  - safeguarding the origin server
+
+- CDN can be seen as a network of reverse proxies
+  - Proxy server: edge server/ content server, "close to the eyeballs"
+  - Customer scale lease capacity from CDNas needed, "pay as you grow"
+  - Help absorb unexpected load from “flash crowds”/DDOS attacks
+  - Low capital expense, operational expense scales with delivered load
+
+
+  
