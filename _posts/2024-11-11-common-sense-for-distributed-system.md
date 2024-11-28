@@ -8,6 +8,8 @@ thumbnail-img: /assets/img/distributed-cover.png
 tags: [
     Distributed System,
     RPC,
+    CDN,
+    Chord,
 ]
 author: Yuchen Jiang
 readtime: true
@@ -50,6 +52,38 @@ This is a note for some basic concepts in distributed system.
   - [Node Failure Handling](#node-failure-handling)
 - [CDN](#cdn)
   - [Reverse Proxy](#reverse-proxy)
+  - [CDN Architecture](#cdn-architecture)
+    - [CDN Setup](#cdn-setup)
+    - [CDN Process](#cdn-process)
+    - [Request Mapping](#request-mapping)
+  - [Performance OPtimization for static content](#performance-optimization-for-static-content)
+  - [Performance Optimization for dynamic content](#performance-optimization-for-dynamic-content)
+- [Raft](#raft)
+  - [Existing fault tolerance](#existing-fault-tolerance)
+    - [Stable leader: handling leader failure](#stable-leader-handling-leader-failure)
+    - [Network partition problem](#network-partition-problem)
+  - [Theorem Discussion](#theorem-discussion)
+    - [Fischer-Lynch-Patterson](#fischer-lynch-patterson)
+    - [CAP Theorem](#cap-theorem)
+    - [Quorum-based Consensus](#quorum-based-consensus)
+  - [RSM Consensus with 5 assumptions](#rsm-consensus-with-5-assumptions)
+    - [Early Attempts](#early-attempts)
+  - [Raft Overview](#raft-overview)
+    - [Normal Operation on rsm system using Raft](#normal-operation-on-rsm-system-using-raft)
+    - [State of Replicas](#state-of-replicas)
+      - [Leader:](#leader)
+      - [Followers:](#followers)
+      - [Candidate:](#candidate)
+    - [Subproblems](#subproblems)
+      - [Leader election](#leader-election)
+      - [Log replication](#log-replication)
+      - [Safety (State Machine Safety)](#safety-state-machine-safety)
+      - [other details](#other-details)
+    - [RPCS used in Raft](#rpcs-used-in-raft)
+    - [Leader Election](#leader-election-1)
+    - [Leader: maintain log consistency](#leader-maintain-log-consistency)
+    - [Election restriction](#election-restriction)
+    - [Cluster membership changes](#cluster-membership-changes)
 
 
 ## RPC
@@ -334,4 +368,267 @@ origin server -> CDN -> client
   - Low capital expense, operational expense scales with delivered load
 
 
+### CDN Architecture
+
+#### CDN Setup
+
+- URL rewriting: change the URL of the request to point to the CDN
+- DNS: resolve the domain name to the CDN
+- Anycast: 
+  - IP -> Server, route the request to the nearest edge server
+  - Allow multiple servers to share the same IP address
+
+
+
+#### CDN Process
+![CDN_ARCHITECTURE0](/assets/img/cdn_process_2.png)
+![CDN_ARCHITECTURE1](/assets/img/cdn_process_3.png)
+![CDN_ARCHITECTURE2](/assets/img/cdn_process.png)
+
+- Anycast part:
+  - process 5-7: global DNS -> regional DNS
+- CNAME:
+  - process 1-2: give back ALIAS to the client
+  - ![CNAME](/assets/img/cname.png)
+
+#### Request Mapping
+
+- Request mapping: map the request to the optimal edge server
+  - Dynamically: based on the current load of the edge server
+  - ![request-mapping](/assets/img/requestMapping.png)
   
+### Performance OPtimization for static content
+
+- Tiered distribution
+  - When an edge cluster does not have a piece of request content in cache, it retrieves that content from its parent cluster rather than the origin server
+  - Reduce the number of network connections the origin server needs to handle
+
+- Overlay network for live streaming
+  - Using a cluster of servers call **entrypoints** to ensure data stream is reliably delivered to edge servers
+
+### Performance Optimization for dynamic content
+
+- Distribuing application to the edge
+  - Allow developers to rent computation power from edge servers
+  - Content aggregation/transformation
+  - Static databases
+  - Data collection
+
+## Raft
+
+### Existing fault tolerance
+- VM fault tolerance
+  - Primary-backup replication
+- MapReduce
+  - Rerun failed tasks on different workers
+  - Requires a master to detect failed workers and initiate rerun of failed tasks
+
+#### Stable leader: handling leader failure
+
+- Leader sends a message to followers at regular intervals, even if there are no new op requests (heartbeat or ping or keepalive)
+- Followers set timers. If timer fires with no heartbeat, abandon the leader and initiate leader election
+
+#### Network partition problem
+
+- Network partition: a network is split into two or more parts, and the parts cannot communicate with each other
+- Could lead to multiple leaders
+- Split brain problem: two parts of the network believe they are the leader
+
+### Theorem Discussion
+
+#### Fischer-Lynch-Patterson
+
+FLP: An asynchronous distributed system can be safe or live, but not both.
+- Safety property: **agreement**/**consistency**
+  - Insist that "Nothing bad ever happens"
+- Liveness property: **termination**/**progress**
+  - Insist that "Something good eventually happens"
+  - Availability can be seen as a liveness property (unbounded response time -> not available)
+- No consensus can be guaranteed in an asynchronous system in the presence of failures
+- Intuition: a “failed” process might just be “slow”, and can rise from the dead at exactly the wrong time
+
+#### CAP Theorem
+
+- Consistency: all nodes see the same data at the same time
+- Availability: a guarantee that every request receives a response about whether it was successful or failed
+- Partition tolerance: the system continues to operate despite network partitions
+- CAP theorem: 
+  - a distributed system can only guarantee two of the three properties
+  - It is impossible to implement an atomic data object that is available
+  - Proof: Partition the network. A write on one side is not seen by a read on the other side, but the read must return a response
+
+#### Quorum-based Consensus
+
+In order to lead and serve client requests, a leader L1 must continually receive votes from a majority of the group (a quorum)
+  - The quorum rule protects consistency (C) in a network partition
+    - at most one connected subgroup can serve requests.
+  - it sacrifices availability (A). 
+    - If a majority of replicas fail, it might be safe for the survivors to serve clients. 
+    - But they must not, because this case is indistinguishable from a network partition. 
+
+![quorum](/assets/img/Quorum.png)
+
+### RSM Consensus with 5 assumptions
+
+1. Deterministic application service
+   - all nodes run the deterministic state machine, all replicas will end up in the same state if they start in the same state and execute the same sequence of requests
+  
+2. Known configuration: fixed group of N=2f+1 replicas
+   - f is the number of faulty replicas
+   - N is the total number of replica nodes
+     - 2f+1 is the minimum number of replicas needed to tolerate f failures
+     - there should be at least f+1 correct replicas to make progress
+   - reason: with 2f+1 replicas, a majority of replicas is f+1, which is enough to make progress as quorum-based consensus requires
+  
+3. Ready quorum: Available only if at most f failures and majority (f+1) are up and connected. Else keep trying!
+   - system is available only if a majority of replicas are up and connected  
+   - if not enough replicas are up, consistency cannot be guaranteed
+  
+4. Fail-stop faults: a failed replica is silent. Replicas run the same program and are faithful to it. Net may delay.
+   - assume that replicas do not exhibit Byzantine behavior
+   - Replicas run the same program and will obey the same protocol when they are not faulty
+   - Protocol should be designed to handle network delays
+  
+5. Smart clients. On fail-over, clients switch and resync to the new leader. No lost/duplicate requests or responses.
+   - Clients must be able to detect leader switch and resync to the new leader
+
+#### Early Attempts
+
+- Paxos
+- Viewstamped Replication
+  
+
+### Raft Overview
+
+Raft is a consensus algorithm for managing a replicated log
+
+#### Normal Operation on rsm system using Raft
+![Raft_system](/assets/img/raft_overview.png)
+  - Replicated log -> replicated state machine
+    - All servers execute same commands in same order
+  - Consensus module ensures proper log replication
+  - System makes progress as long as any majority of servers are up
+  - Failure model: fail-stop (not Byzantine), delayed/lost messages
+
+#### State of Replicas
+
+##### Leader: 
+accepts client requests, replicates log entries, and sends heartbeats to followers
+
+- Upon election: 
+  - send initial empty `AppendEntries` RPCs (heartbeat) to each server; 
+  - repeat during idle periods to prevent timeout and start new elections
+
+- If command received from client
+  - append entry to local log
+  - Use `AppendEntries` RPC to replicate log entry to followers
+  - When responded by majority, commit entry and apply to state machine
+  - respond after entry applied to state machine
+
+- Log management 
+  - log replication:
+    - check follwers' `nextIndex`, if last log index is bigger than `nextIndex`, send `AppendEntries` RPC with log entries starting at `nextIndex`
+      - success: update `nextIndex` and `matchIndex` for the follower
+      - fail (inconsistency): decrement `nextIndex` and retry, until `nextIndex` is consistent with the leader
+  - log entry commit:
+    - `N` > current `commitIndex`
+      - `commitIndex` is the highest log entry index that the leader has committed
+    - a majority of `matchIndex` ≥ `N`
+      - `matchIndex` is the highest log entry index that the follower has replicated
+    - the term of the log entry at `N` is the current term
+      - ensure that the log entry is replicated in the current term 
+    - How to commit:
+      - update `commitIndex` to `N`
+
+##### Followers: 
+
+replicate log entries, respond to requests from leader, and vote in elections
+
+- If election timeout elapses without receiving AppendEntries RPC from current leader or granting vote to candidate: convert to candidate
+
+##### Candidate: 
+- Nominate itself for leader, requests votes from followers, becomes leader if it receives votes from a majority of the group
+
+![Raft_state](/assets/img/raft_state.png)
+
+![Raft_term](/assets/img/raft_term.png)
+
+- term: a logical clock that represents the current leader
+  - leader election: increment term
+  - leader change: increment term
+  - term is used to ensure that only one leader is elected in a given term
+
+#### Subproblems
+
+##### Leader election
+
+a new leader must be chosen when an existing leader fails
+
+##### Log replication
+
+the leader must accept log entries from clients and replicate them across the cluster, forcing the other logs to agree with its own.
+
+##### Safety (State Machine Safety)
+Property: if any server has applied a particular log entry to its state machine, then no other server may apply a different command for the same log index
+
+##### other details
+
+![Raft_details](/assets/img/raft_detail.png)
+
+#### RPCS used in Raft
+
+- AppendEntries RPC
+  - Leader sends log entries to followers
+  - Followers respond with success or failure
+  - also used as heartbeat
+- RequestVote RPC
+  - Candidate requests votes from followers
+  - Followers respond with vote or no vote
+- Idempotent: both RPCs are idempotent
+
+#### Leader Election
+
+- To begin an election, a follower increments its current term and
+transitions to candidate state. 
+- It then votes for itself and issues RequestVote RPCs in parallel
+to each of the other servers in the cluster
+- A candidate continues in this state until one of three things
+happens: 
+  - (a) it wins the election
+  - (b) another server establishes itself as leader (sending out heartbeats)
+  - (c) a period of time goes by with no winner.
+
+- Each server will vote for **at most one** candidate in a given term,
+on a **first-come-first-served** basis
+- Once a candidate wins an election, it becomes leader. It then sends **heartbeat messages** to all of the other servers to establish its authority and prevent new elections.
+- To prevent split votes, election timeouts are chosen randomly
+from a fixed interval (e.g., 150–300ms).
+  - This way, servers will time out at different times, preventing them from starting elections as candidates at the same time
+  - Hopefully, one follower time out at a time
+
+#### Leader: maintain log consistency
+
+- The leader maintains a nextIndex for each follower, which is the index of the next log entry the leader will send to that follower. 
+  - When a leader first comes to power, it initializes all nextIndex values to the index just after the last one in its log.
+- If a follower’s log is inconsistent with the leader’s, the AppendEntries consistency check will fail in the next AppendEntries RPC
+  - After a rejection, the leader decrements nextIndex and retries the AppendEntries RPC.
+
+#### Election restriction
+
+- Goal: A candidate wins the election unless its log contains all committed entries
+- A RequestVote RPC includes information about the candidate’s log, and the voter denies its vote if its own log is more up-todate than that of the candidate.
+
+#### Cluster membership changes
+
+two stages: joint consensus and complete transition
+
+- Joint consensus: 
+  - Set Joint Consensus Configuration `Cold ∪ Cnew`
+  - leader should replicate a configuration change log entry to all servers in both configurations
+  - leader election requires a majority from both configurations
+- Complete transition
+  
+
+- Log entries are replicated to all servers in both configurations
+- Any server from either configuration may serve as leader
+- Agreement (for elections and entry commitment) requires separate majorities from both the old and new configurations
