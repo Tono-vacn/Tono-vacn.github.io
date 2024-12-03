@@ -102,6 +102,7 @@ This is a note for some basic concepts in distributed system.
   - [Read/Write Guarantee](#readwrite-guarantee)
   - [Application of Zookeeper](#application-of-zookeeper)
     - [Simple locks](#simple-locks)
+    - [Simple locks without herd effect](#simple-locks-without-herd-effect)
 
 
 ## RPC
@@ -845,3 +846,21 @@ these apis are well tuned for concurrency and synchronization
 - problem: will cause herd behavior
   - all the clients will be notified when the lock is released
   - all the clients will try to acquire the lock at the same time
+
+#### Simple locks without herd effect
+```
+  Lock:
+  n = create(l +”lock-”, EPHEMERAL|SEQUENTIAL)
+  While (true) {
+    C = getchildren(l, false)
+    If n is lowest znode in C, exit
+    P = znode in C ordered just before n
+    If exists(p, watch = true) wait for watch event
+  }
+ 
+
+  Unlock:
+  Delete(n)
+```
+
+like FIFO lock. The lock is acquired by the lowest znode, and the next znode will wait for the previous znode to be deleted
