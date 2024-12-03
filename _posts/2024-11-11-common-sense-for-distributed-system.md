@@ -83,7 +83,25 @@ This is a note for some basic concepts in distributed system.
     - [Leader Election](#leader-election-1)
     - [Leader: maintain log consistency](#leader-maintain-log-consistency)
     - [Election restriction](#election-restriction)
+    - [Committing entries from previous terms](#committing-entries-from-previous-terms)
+    - [Correctness of Raft](#correctness-of-raft)
     - [Cluster membership changes](#cluster-membership-changes)
+    - [Non-volatile memory](#non-volatile-memory)
+- [Zookeeper](#zookeeper)
+  - [Coordination Service](#coordination-service)
+  - [Data Model](#data-model)
+  - [Zookeeper Structure](#zookeeper-structure)
+    - [Two types of files](#two-types-of-files)
+    - [Operations on znodes](#operations-on-znodes)
+  - [Linearizability](#linearizability)
+    - [Sequential Consistency, Eventual Consistency and Strong Consistency](#sequential-consistency-eventual-consistency-and-strong-consistency)
+    - [Raft provides linearizability](#raft-provides-linearizability)
+    - [Zookeeper's guarantee](#zookeepers-guarantee)
+  - [Replicated Database](#replicated-database)
+  - [How is FIFO client ordering ensured](#how-is-fifo-client-ordering-ensured)
+  - [Read/Write Guarantee](#readwrite-guarantee)
+  - [Application of Zookeeper](#application-of-zookeeper)
+    - [Simple locks](#simple-locks)
 
 
 ## RPC
@@ -196,7 +214,7 @@ between the client and the server
   - Special operations (e.g., read clock time)
   - Assumption: VM has a single core
 - Primary can output to the client
-- Backup’s output is dropped at the hypervisor
+- Backup's output is dropped at the hypervisor
 ![non-deterministic](/assets/img/non-determinist ic.png)
 - if the backup VM ever takes over after a
 failure of the primary, the backup VM will continue executing in
@@ -211,7 +229,7 @@ VM has sent to the external world
 - Non-deterministic events will be logged
   - log the exact instruction at which the event occurred
   - requires support from hardware
-  - Special instructions’ return value must be logged
+  - Special instructions' return value must be logged
 
 #### Output requirement
 
@@ -251,7 +269,7 @@ Peer-to-peer distributed protocol
 - What Chord is for
   - lookup (Key) -> IP address
   - Notifies applications change of set of keys the node is responsible for
-- What’s not Chord’s responsibility
+- What's not Chord's responsibility
   - Authentication, caching, replication, user-friendly naming
 - Example of Chord in Software
   ![Chord](/assets/img/chordExample.png)
@@ -300,7 +318,7 @@ Node receives a message, it will forward the message to the node responsible for
 
 ![chord_add_new](/assets/img/chord_add_new.png)
 
-- utilize the existing node to look up the new node’s finger table
+- utilize the existing node to look up the new node's finger table
 
 #### Step2: Update Finger Table of Existing Nodes
 
@@ -602,7 +620,7 @@ happens:
 on a **first-come-first-served** basis
 - Once a candidate wins an election, it becomes leader. It then sends **heartbeat messages** to all of the other servers to establish its authority and prevent new elections.
 - To prevent split votes, election timeouts are chosen randomly
-from a fixed interval (e.g., 150–300ms).
+from a fixed interval (e.g., 150-300ms).
   - This way, servers will time out at different times, preventing them from starting elections as candidates at the same time
   - Hopefully, one follower time out at a time
 
@@ -610,25 +628,220 @@ from a fixed interval (e.g., 150–300ms).
 
 - The leader maintains a nextIndex for each follower, which is the index of the next log entry the leader will send to that follower. 
   - When a leader first comes to power, it initializes all nextIndex values to the index just after the last one in its log.
-- If a follower’s log is inconsistent with the leader’s, the AppendEntries consistency check will fail in the next AppendEntries RPC
+- If a follower's log is inconsistent with the leader's, the AppendEntries consistency check will fail in the next AppendEntries RPC
   - After a rejection, the leader decrements nextIndex and retries the AppendEntries RPC.
 
 #### Election restriction
 
+Problem: What if the candidate don't have the committed log entries? (if the candidate becomes the leader, it may flush others' committed log entries)
+
 - Goal: A candidate wins the election unless its log contains all committed entries
-- A RequestVote RPC includes information about the candidate’s log, and the voter denies its vote if its own log is more up-todate than that of the candidate.
+- A RequestVote RPC includes information about the candidate's log, and the voter denies its vote if its own log is more up-todate than that of the candidate.
+  - idea here: a committed log entry is replicated in a majority of servers ( at least f+1 servers). If a candidate need f+1 votes to win the election, these add up to 2f+2, which means at least 1 voter will have the committed log entry.
+
+#### Committing entries from previous terms
+
+- Delay commit for log entries from previous terms for new leader
+  - If a leader is elected and finds that log entries from previous terms are not committed, it can't commit them immediately even if they are replicated in a majority of servers
+  - New leader must wait until it has replicated a log entry from its own term before committing log entries from previous terms
+
+#### Correctness of Raft
+
+Based on the Election restriction and Committing entries from previous terms rule, raft ensures that a committed log will always show up in the leader's log eventually
 
 #### Cluster membership changes
-
-two stages: joint consensus and complete transition
-
-- Joint consensus: 
-  - Set Joint Consensus Configuration `Cold ∪ Cnew`
-  - leader should replicate a configuration change log entry to all servers in both configurations
-  - leader election requires a majority from both configurations
-- Complete transition
-  
 
 - Log entries are replicated to all servers in both configurations
 - Any server from either configuration may serve as leader
 - Agreement (for elections and entry commitment) requires separate majorities from both the old and new configurations
+
+#### Non-volatile memory
+
+- Follower should persist its vote for a candidate 
+![non_volatile](image.png)
+
+## Zookeeper
+
+- When using an RSM library(like raft)
+  - very complex to use
+  - need to rethink about whether the application is actually a state machine, like how to integrate
+
+- Using a coordination service
+  - Zookeeper
+
+Raft: replicating computation
+Zookeeper: replicating state
+
+### Coordination Service
+
+- provide uable api (**zookeeper's goal**)
+
+- implemented in a high-performance way
+  - Raft: asks every request to be processed in a Sequential manner, since the log is sequential. That will replicate the computation among all the replicas.
+    - more replicas -> more overhead
+  - Zookeeper: relaxed consistency
+    - more replicas -> more performance/speedup (**zookeeper's goal**)
+
+### Data Model
+
+![zookeeper_datamodel](/assets/img/zookeeper_datamodel.png)
+
+- Zookeeper utilize a hierarchical file system
+  - similar to a file system
+  - each node is called a znode, and can have children znodes
+  - zookeeper uses paths to identify znodes
+
+### Zookeeper Structure
+
+![zookeeper_struct](image-1.png)
+
+#### Two types of files
+
+- Regular files: Creation or deletion must be explicit
+- Ephemeral files: Automatically deleted when the client session ends
+
+#### Operations on znodes
+
+- `Create(path, data, flags)`
+  - Exclusive: only create if the znode does not exist
+  - flags:
+    - PERSISTENT: regular file
+    - EPHEMERAL: ephemeral file, ephemeral nodes won't have children
+    - SEQUENTIAL: append a monotonically increasing counter to the znode name, this node can be PERSISTENT or EPHEMERAL
+    - CONTAINER: create a container znode, which will be deleted when all children are deleted
+    - PERSISTENT_SEQUENTIAL_WITH_TTL: create a PERSISTENT_SEQUENTIAL znode with a time-to-live
+- `Delete(path, version)`
+  - only delete if the version matches(znodes.version == version)
+- `Exists(path, watch)`
+  - watch: set to true, the client will be notified when the znode changes(create/delete)
+- `GetData(path, watch)`
+  - will return entire data of the znode
+- `SetData(path, data, version)`
+  - only update if the version matches(znodes.version == version)
+- `GetChildren(path, watch)`
+- `Sync()`
+  - force the server to sync with the leader
+  - returns when writes before sync are visible to the client
+
+these apis are well tuned for concurrency and synchronization
+
+- exclusive create: exactly one concurrent create returns success
+- getData/setData: supports mini-transactions(atomicity)
+- sessions automate actions when clients fail (like release locks on failure)
+- watches: avoid polling
+
+### Linearizability
+
+- At a high-level, we want a replicated system to behave as a single copy
+  - replications are just for fault tolerance
+  - clients should not feel the difference between a single copy and a replicated system
+
+- Check the definition of linearizability on Internet
+  - ![linear_dif](/assets/img/linear_difi.png)
+  - Consisten
+  - Sequential
+  - Instantaneous(real-time)
+  - Atomic
+  - a kind of Strong Consistency
+
+- Example of linearizability
+  - ![linear](/assets/img/linear.png)
+    - C1: Write X = 1 and then Write X = 2
+    - C2: Read X, and the return moment X == 2
+    - C3: Read X, and the return moment X == 1
+    - all the operation can happen in any single point of the annotated time period (rectangle), generating a sequential history is like picking a point in the periods for each operation and connect them in a line
+  - ![linear_res](/assets/img/linear_res.png)
+    
+  - This one violate the linearizability
+    ![linear_violate](image-2.png)
+    - according to linearizability's second rule, C2's read X should be placed ahead of C3's read X
+    - And the only possible sequential history violates the rule
+
+#### Sequential Consistency, Eventual Consistency and Strong Consistency
+
+- Sequential Consistency: 
+  - ensure all operations are visible to all clients in the same order(like write)
+  - but not guarantee the real-time result of the operation: client might see state before write operation propagated
+
+- Eventual Consistency:
+  - ensure all the replicas will eventually converge to the same state
+  - no real-time consistency guarantee
+
+- Strong Consistency:
+  - ensure all the operations are visible to all clients in the same order
+  - guarantee the real-time result of the operation
+
+#### Raft provides linearizability
+  - all the operations are serialized by the log
+  - if operation a is after operation b, this means b is committed before a by the leader
+    - operation a is after operation b in the log
+
+#### Zookeeper's guarantee
+
+
+  - Sequential Consistency
+  - Eventual Consistency
+  - Linearizable writes
+
+  - FIFO ordering for clients
+    - read may return stale data
+      - zookeeper allows read from every where, but write only from the leader
+    - for a single client, all the operations are processed in the order they are sent among all the nodes
+    - for different clients, the order of operations is not guaranteed
+
+### Replicated Database
+  ![zoo_keeper](image-3.png)
+
+  - ZooKeeper uses periodic snapshots and only requires redelivery of messages since the start of the snapshot.
+  - Snapshots are fuzzy since we do not lock the ZooKeeper state to take the snapshot
+    - The result may not correspond to the state of ZooKeeper at any point in time
+    - Since state changes are idempotent, we can apply them twice as long as we apply the state changes in order
+
+### How is FIFO client ordering ensured
+
+  - When a client sends a request, the replica returns zxid
+    - Zxid is the id of the last write
+  - Client keeps the most recent zxid and sends it along with a read request 
+    - if replica is not updated till zxid, wait (hold the response until its the same up-to-date as client)
+    - Otherwise, return data from database
+    - as clients' requests may not have latest zxid from other clients, there might still be stale reads
+
+### Read/Write Guarantee
+
+- suppose we have configuration data in ZK that coordinator writes, but that many other ZK clients need to read and the data consists of a bunch of zknodes
+
+```
+  C1:
+  Delete(“ready”)
+  Write f1
+  Write f2
+  Create(“ready”)
+
+  C2:
+  Exists (“ready”, watch = true)
+  Read f1
+
+  Read f2
+  
+```
+
+- C1: delete the ready flag, rewrite f1, rewrite f2, and create the ready flag
+- C2: watch the ready flag, read f1, read f2
+  - If the ready only serves as a lock, C2 can read a "bad configuration" (f1 and f2 are not consistent)
+  - If the ready is set with watch, C2 will be notified when the ready is modified, and handle the situation properly
+
+### Application of Zookeeper
+
+#### Simple locks
+
+```
+  Lock:
+  Create(“lock”, EPHEMERAL, watch=true)
+
+  Unlock:
+  Delete(“lock”)
+```
+
+- problem: will cause herd behavior
+  - all the clients will be notified when the lock is released
+  - all the clients will try to acquire the lock at the same time
