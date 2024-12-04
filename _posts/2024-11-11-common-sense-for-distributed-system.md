@@ -103,6 +103,9 @@ This is a note for some basic concepts in distributed system.
   - [Application of Zookeeper](#application-of-zookeeper)
     - [Simple locks](#simple-locks)
     - [Simple locks without herd effect](#simple-locks-without-herd-effect)
+- [Bitcoin](#bitcoin)
+  - [stronger fault tolerance](#stronger-fault-tolerance)
+  - [Blockchains](#blockchains)
 
 
 ## RPC
@@ -864,3 +867,17 @@ these apis are well tuned for concurrency and synchronization
 ```
 
 like FIFO lock. The lock is acquired by the lowest znode, and the next znode will wait for the previous znode to be deleted
+
+The while true here is to prevent the crush of the client that generated the previous znode. 
+
+## Bitcoin
+
+### stronger fault tolerance
+
+- what if Failed but still responding to heartbeats
+  - unable to detect directly
+- what if Do not follow designed protocol?
+  - accidentally
+  - intentionally by malicious participants
+
+### Blockchains 
