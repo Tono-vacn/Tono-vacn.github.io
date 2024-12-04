@@ -105,7 +105,22 @@ This is a note for some basic concepts in distributed system.
     - [Simple locks without herd effect](#simple-locks-without-herd-effect)
 - [Bitcoin](#bitcoin)
   - [stronger fault tolerance](#stronger-fault-tolerance)
+    - [Raft and Byzantine Fault Tolerance](#raft-and-byzantine-fault-tolerance)
   - [Blockchains](#blockchains)
+  - [Challenges in Bitcoin](#challenges-in-bitcoin)
+    - [Digital Signatures](#digital-signatures)
+  - [Bitcoin account](#bitcoin-account)
+    - [Example of spending money](#example-of-spending-money)
+    - [How to check for double spending](#how-to-check-for-double-spending)
+      - [proof of work](#proof-of-work)
+  - [RSM Consensus without trust](#rsm-consensus-without-trust)
+  - [Correctness of Consensus](#correctness-of-consensus)
+    - [Forks and healing](#forks-and-healing)
+  - [Miners' Incentive](#miners-incentive)
+  - [Simplified Payment Verification](#simplified-payment-verification)
+  - [Value Splitting](#value-splitting)
+  - [Blockchain versus Raft/ZooKeeper](#blockchain-versus-raftzookeeper)
+  - [Question](#question)
 
 
 ## RPC
@@ -880,4 +895,152 @@ The while true here is to prevent the crush of the client that generated the pre
   - accidentally
   - intentionally by malicious participants
 
+#### Raft and Byzantine Fault Tolerance
+
+- Node numbers should be `3f+1` to tolerate `f` Byzantine faults
+  - Quorum-based consensus requires `2f+1` nodes: at least `f+1` correct nodes to make progress
+  - the union of two quorums is `2f+1 + 2f+1 - (3f+1) = f+1`, meaning that at even there are `f` Byzantine faults, there are still `1` correct node to make progress
+    - Byzantine nodes can make arbitrary decisions among different quorums, making inconsistency
+    - shared correct node among different quorums will act like a bridge to ensure the spread of correct decisions
+    - correct nodes can detect Byzantine nodes and prevent them from leading to inconsistency
+
+
 ### Blockchains 
+
+- Achieving consensus against malicious participants
+- No centralized trust, using a peer-to-peer network
+- Proof of work
+  - Bitcoin
+  - Ethereum 1.0
+- Proof of stake
+  - Ethereum 2.0
+
+### Challenges in Bitcoin
+
+- Forgery
+  - don't want anyone to forge money
+  - solved by digital signatures
+- Double spending
+  - can't spend the same money twice
+- Theft
+  - Private keys can be stolen/lost if not stored appropriately
+
+#### Digital Signatures
+
+- `Sig(message, private key)` -> Signature
+
+- `Verify(message, Signature, public key)` -> True/False
+
+### Bitcoin account
+
+An address names a principal: an entity that can own coin.
+
+- A principal is a public key
+- account owner is anyone with the matching private key
+- owner may spend coin by publishing a signed statement (a “transaction”) to transfer it to another address
+
+#### Example of spending money
+![bitcoin_spend](image-4.png)
+
+- `<Transaction>: <Receiver's Pub Key>, <Amount>, <Signature>`
+- prior transaction acts as the proof of money ownership
+
+#### How to check for double spending
+
+Normally a central trusted party is needed to check for double spending
+
+- a sequential, global order of all the transactions will be needed
+  - check the transaction log to see whether the coin is spent before
+
+##### proof of work
+![proof_of_work](image-5.png)
+- Here T denotes the transaction, each block contains fixed number of transactions
+- Bitcoin clients broadcast transactions to every miners in system
+- Miners: maintain blockchain, create blocks and append
+  - Miners can try to add different transactions to the same block 
+  - Miners try to append blocks to the blockchain. Each append requires finishing computational work
+    - Find a number x such that th ehash result have at least y leading zeros
+    - `Hash(Hash(previous block), Tx1, Tx2, Tx3, …., x)` -> 0x0000000ab20acde
+    - Nonce here serves as an random input to the hash function
+  - A "Miner" broadcasts to all other miners once a block is appended
+
+Why previous hash is included in the block?
+
+- prove where you are attaching in the chain
+- to ensure the order of the blocks and preven from blocks being modified
+
+### RSM Consensus without trust
+![block_log](image-6.png)
+"Nakamoto Consensus": a consensus algorithm that allows a set of nodes to agree on a set of transactions without trusting each other
+- Randomly choose replica to append a new block of log entries
+- Each new block links securely to the previous block
+- Adding a new block -> signals approval of all previous blocks
+- Broadcast the new block; receivers inspect and accept/reject.
+- reward faithful contributions and punish misbehavior
+
+### Correctness of Consensus
+
+How to obtain consensus?
+- miner proposes a new block with a sequence of new transactions, appended to the ledger/log/chain as they view it.
+- “Everybody” verifies for themselves that the new block is valid and is linked to the “end of the chain”. Else reject block.
+- Each replica exposes its current view of the chain to clients, but its view may change if it hears of a different/longer log suffix.
+- If a replica accepts (votes for) a block, it also accepts the linked predecessor(s), overwriting/reverting its log suffix as necessary.
+
+Longest valid chain wins: miners will dump the shorter chain once receiving a longer valid chain
+
+![alt text](image-7.png)
+
+- if client's transaction is in the chain's tail-side blocks, then the transaction is confirmed
+
+#### Forks and healing
+
+![forks](image-8.png)
+
+- Forks: result from faults, partitions, races, or attacks
+- Over time, forks should resolve: one branch grows longer (attracts more “votes”) and so dominates
+
+the only possibility for double spending is to let transactions appear on two different branches of the chain, which will finally be resolved by the longest chain rule
+
+### Miners' Incentive
+
+- Miners are rewarded for their work
+  - Each new block can include a Bitcoin payment to the miner that appends the block
+  - The total amount of Bitcoin is fixed, and the payment decreases in geometric fashion
+
+- Client can optionally include a transaction fee to the miner, Miner will prioritize transactions with higher fees
+
+### Simplified Payment Verification
+![merkle_tree](image-9.png)
+- Merkle tree: a binary tree of hashes, where each leaf node is a hash of a data block, and each non-leaf node is a hash of its children
+- Payer can declare the block number where the transaction is included, and the Merkle Tree Path with that certain transaction is sent from the miner to the buyer
+- Receiver can verify the transaction by hashing the transaction and the Merkle Tree Path, and compare it with the root hash
+
+### Value Splitting
+![value_splitting](image-10.png)
+
+- UTXO: Unspent Transaction Output
+  - Each transaction has a set of inputs and outputs
+  - Each output is a UTXO
+  - Each input is a reference to a UTXO
+  - Each transaction consumes UTXOs and creates new UTXOs
+  - UTXOs are indivisible
+  - UTXOs are used to prevent double spending
+- That's why value splitting is needed
+
+### Blockchain versus Raft/ZooKeeper
+- No fixed configuration: replica group is open+large
+- Nobody trusts anybody
+- No leader! 51% evil -> failure
+- No RPC: no trusted server to respond! Broadcast.
+- Log is public: public ledger. Anyone can read it
+  - Op confirmation appears in the log, so client and others see it
+- Replicas “take turns” as leader and check each other.
+  - Leaders generate log entries in batches called blocks.
+  - Leaders sign their blocks and chain hashes: no tampering. 
+- Clients use keypairs to sign ops (entries, transactions)
+
+### Question
+- Tolerating malicious participants requires 3f + 1
+  - Why Bitcoin only needs 51% of computing power to well behave (2f+1) ?
+    - Proof of Work (PoW): consensus is determined by computational power (hashing power) rather than the number of nodes. This mechanism is designed to make it difficult (expensive) for an attacker to take control of the network, but it doesn't require a fixed number of nodes to tolerate faults.
+    - To secure Bitcoin's blockchain, an attacker would need to control more than 50% of the total mining power in the network to successfully perform a 51% attack (such as double-spending). This is why 51% of computing power is required to "well behave" or keep the network secure.
