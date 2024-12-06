@@ -121,6 +121,18 @@ This is a note for some basic concepts in distributed system.
   - [Value Splitting](#value-splitting)
   - [Blockchain versus Raft/ZooKeeper](#blockchain-versus-raftzookeeper)
   - [Question](#question)
+- [Ethereum](#ethereum)
+  - [Problem with centralized applications](#problem-with-centralized-applications)
+  - [Decentralized Applications](#decentralized-applications)
+  - [Ethereum](#ethereum-1)
+    - [Ethereum account](#ethereum-account)
+    - [Message](#message)
+    - [Transaction](#transaction)
+  - [Code Execution](#code-execution)
+  - [Execution Model](#execution-model)
+  - [mining](#mining)
+  - [Other Discussions](#other-discussions)
+- [Google File System](#google-file-system)
 
 
 ## RPC
@@ -1044,3 +1056,113 @@ the only possibility for double spending is to let transactions appear on two di
   - Why Bitcoin only needs 51% of computing power to well behave (2f+1) ?
     - Proof of Work (PoW): consensus is determined by computational power (hashing power) rather than the number of nodes. This mechanism is designed to make it difficult (expensive) for an attacker to take control of the network, but it doesn't require a fixed number of nodes to tolerate faults.
     - To secure Bitcoin's blockchain, an attacker would need to control more than 50% of the total mining power in the network to successfully perform a 51% attack (such as double-spending). This is why 51% of computing power is required to "well behave" or keep the network secure.
+
+## Ethereum
+
+### Problem with centralized applications
+
+- have to always trust the application developers/operators
+- putting too much trust in a single entity
+
+### Decentralized Applications
+
+Minimal trust in application developers/operators, support a wide range of applications
+
+- Approach 1: Build independent network(blockchain)
+- Approach 2: Build on top of an existing blockchain
+  - hard to generalize to other applications
+
+### Ethereum
+
+Ethereum is a decentralized platform that runs smart contracts: applications that run exactly as programmed without any possibility of downtime, fraud or third-party interference.
+
+- Security via blockchain: a world computer (every participant executes the exact same code on the exact same state)
+  - every miner will do the same computation
+- Programmability: a programming language for ease of application development
+  - EVM: Ethereum Virtual Machine Assembly code
+  - Solidity: a high-level language for smart contracts that can compile to EVM
+- Incentive methods for miners: a built-in currency called ether
+  - user to pay the miner
+
+#### Ethereum account
+- Accounts
+  - Nonce: a counter used to make sure each transaction can only be processed once
+  - The account's current ether balance
+  - The account's contract code, if present (contract accounts only)
+  - The account's storage (empty by default, contract accounts only)
+- Two types of accounts
+  - External owned accounts: controlled by private keys, like Bitcoin accounts
+    - controlled by end users
+  - Contract accounts: controlled by contract code
+    - controlled by ultimated entity
+
+#### Message
+
+- An account can sends a message to another account
+- The sender can be an external account or a contract account
+- The receiver can also be an external account of a contract account
+  - If the receiver is a contract account, it can return a response
+
+
+#### Transaction
+
+- A transaction = a message from an external account + receiver account + amount of ether to send, STARTGAS, GASPRICE
+  - STARTGAS: the maximum number of computational steps the transaction execution is allowed to take
+    - Transaction can trigger the execution of code on the contract accounts, STARTGAS is used to limit the execution steps
+  - GASPRICE: the fee the sender pays per computational step
+- Each transaction has to specify STARTGAS, GASPRICE
+  - STARTGAS is the limit of steps
+  - GASPRICE is per-step payment to the miner
+  - If the transaction runs out of gas, all state changes revert, except for the payment(to the miner)
+  - If the transaction finishes before gas running out, remaining gas is refunded
+
+![transition](image-11.png)
+In the example the `14c5f88a` should be `14c5f8ba`
+- trsaction from `14c5f8ba` to `bb75a980` with 10 ether
+- the code on the receiver account will be executed  
+
+### Code Execution
+
+- EVM
+  - a stack-based architecture
+  - Each operation is a single byte
+- Resource for a single program
+  - Stack: FILO of 32-byte values
+  - Memory: an infinite expandable byte array
+  - Storage (persistent across computation): a key-value store of 32-byte keys and 32-byte value
+
+### Execution Model
+- While the Ethereum virtual machine is running, its full computational state can be defined by the tuple (block_state, transaction, message, code, memory, stack, pc, gas), where block_state is the global state containing all accounts and includes balances and storage. 
+- Every round of execution, the current instruction is found by taking the pc-th byte of code, and each instruction has its own definition in terms of how it affects the tuple.
+- Each Miner can be considered as a single thread of execution, and can reach a consensus on the state of the system.
+
+### mining
+
+- Each block contains a set of transactions and the most recent state
+- Patricia tree to store the state
+  - This means we do not need the full history to reconstruct the current state
+
+### Other Discussions
+
+- Mining Pool:
+  - A group of miners who share their processing power over a network and split the reward equally, according to the amount of work they contributed to the probability of finding a block
+  - Pool operator will distribute the reward to the miners
+  - Reduce duplication of work, divide the job
+  - 51% attack: if a pool has more than 51% of the network's hashing power, it can control the network
+
+- Stale block:
+  - Should the miner still be rewarded?
+  - Yes, the miner has done the work, but the block is not included in the main chain
+
+- Can a malicious user let EVM enter an infinite loop?
+  - run out of gas, the transaction will be reverted, but the miner will still be rewarded
+  - That means it will be expensive to block the network
+
+- Is Turing completeness needed for ethereum?
+  - Turing completeness is needed for the flexibility of the system
+  - But it also brings the risk of infinite loops
+  - Ethereum is Turing complete, but it has a gas limit to prevent infinite loops
+
+
+## Google File System
+
