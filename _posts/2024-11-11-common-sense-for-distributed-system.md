@@ -133,6 +133,16 @@ This is a note for some basic concepts in distributed system.
   - [mining](#mining)
   - [Other Discussions](#other-discussions)
 - [Google File System](#google-file-system)
+  - [Design assumptions](#design-assumptions)
+  - [GFS Architecture](#gfs-architecture)
+    - [Coordinateor data](#coordinateor-data)
+  - [File system API](#file-system-api)
+    - [Read workflow](#read-workflow)
+    - [Write/Append workflow](#writeappend-workflow)
+  - [Single Coordinator](#single-coordinator)
+  - [Lease](#lease)
+  - [Record append](#record-append)
+  - [Consistency Model](#consistency-model)
 
 
 ## RPC
@@ -1165,4 +1175,121 @@ In the example the `14c5f88a` should be `14c5f8ba`
 
 
 ## Google File System
+
+### Design assumptions
+
+- Component failures are the norm
+- Files are huge
+- Most files are mutated by appending new data rather than overwriting existing data
+- Co-designing applications and file system API
+  - relaxed consistency model
+
+### GFS Architecture
+
+![GFS_Arch](image-12.png)
+
+- A single coordinator and a set of chunkservers
+- Files are divided into fixed-size (64MB) chunks
+  - Each chunk has an immutable and globally unique 64-bit chunk handle assigned by the coordinator
+    - chunk handle is used to refer to the chunk in all communication(identifier)
+  - Each chunk is stored at 3 different chunkservers
+- Coordinator maintains all file system metadata
+  - Namespace, access control information, mapping from files to chunks, locations of chunks
+
+#### Coordinateor data
+
+- File Name -> array of chunk handles
+  - stored in Non-volatile storage
+- Chunk handle -> list of chunkservers, version #, primary, lease expiration
+  - primary: which chunkserver is the primary one, responsible for chunk write
+  - lease expiration: coordinate assign the lease to the primary chunkserver
+  - version #: the version number is 
+- Log + Checkpoints
+  - Non-volatile storage
+
+### File system API
+
+- Common API
+  - Create, Delete, Open, Close, Read, Write
+- GFS-specific API
+  - Snapshot
+  - Record append
+    - GFS will return the offset of the record, facilitate the concurrent appending of records
+
+#### Read workflow
+
+1. Client sends `<Name, offset>` to Coordinator
+2. Coordinator sends `<handle, a list of chunkservers, version#>` to the client, after that client caches this information
+   1. Here the version number stands for the highest version number the coordinator aware of
+   2. Client will cache the returned information for reuse
+3. Client picks one chunkserver and sends `<handle, offset>`
+   1. Pick closest server to minimize network overheads
+   2. Check version#: check the version number of chunk server is the same as the version number of the coordinator, if lower than the coordinator, the client will read elsewhere
+4. Chunkserver reads data from disk to sends content to client
+
+
+#### Write/Append workflow
+
+![GFS_Write](image-13.png)
+
+- Use primary back replication to create a 3-copy replicated system
+- This means clients needs to know which chunkserver is the primary
+  - **Primary will order write requests from multiple clients**
+  - Coordinator needs to pick a chunkserver as the primary
+    - Exactly one primary per version number
+    - pick the one matches the current version number about the chunk
+    - lease: primary will hold the lease for a certain period of time
+- When do primary respond to the client?
+  - After the data is written to all the chunkservers
+- In GFS data and control are decoupled
+  - Data is temporarily buffered in any nodes and will be formally recorded in the chunkserver after the primary send the write request to the replicas
+
+### Single Coordinator
+
+1. Can use global knowledge to do chunk placement and replication decisions
+   1. like chunk servers management: heartbeat
+2. Need to minimize its involvement in reads/writes so that the coordinator will not become a performance bottleneck
+   1. only metadata operations are handled by the coordinator, like create or delete
+   2. Hold metadata in memory: If a client’s request is read-only for metadata, then latency is low
+3. The coordinator writes an operation log on its disk, and the log is replicated to remote machines
+4. Periodically scan through its entire state for chunk garbage collection, extra replication when chunkservers failed, chunk migration to load balancing of disk spaces and chunk accesses
+   - the entire system's intelligence is concentrated in the coordinator, and other nodes are only responsible for data storage and retrieval
+5. Polls chunkservers for chunk locations
+  
+### Lease
+
+- Coordinator selects primary by giving the primary a 60 second lease. When a chunkerserver has the lease, it knows that it is the primary for the chunk.
+- The reason for lease:
+  1. why not use rpc calls to select primary(assign, revoke)?
+      - probable network partition/ latency
+  2. no boter for checking the primary, all need to do is to wait for the lease to expire, no need for reliable failure detector
+  
+### Record append
+
+![record_append](image-14.png)
+![record_append_1](image-15.png)
+
+Here ths blue rectangle indicates the chunk.
+backup2 is not able to receive the data, if the primary retries to append data on backup2, the data will be appended somewhere else
+
+- Read/Write are idempotent, but append is not
+- No need to specify offset
+  - Offset is part of the return value of append
+  - append request from different clients will be ordered by coordinator
+- GFS will append the record “at least once” atomically
+- duplicated append will cause the data not consistent any more
+- GFS think have an inconsistent chunk copy is fine
+
+### Consistency Model
+
+- A file region is **consistent** if all clients will always see the same data, regardless of which replicas they read from.
+- A file region is **defined** after a file data mutation (like a write or append) if it is consistent and clients will see what the mutation writes in its entirely.
+  - Client 1 write AAA, GFS returns successfully
+  - Client 2 write BBB, GFS returns successfully
+  - Client 3 read, won't be case like ABA
+  - If all clients see case ABA, then it's consistent but undefined
+
+![GFS_con](image-16.png)
+- the consistent and undefined for concurrent successes of writes indicates that there might be leader shift in the chunk boundaries, which might cause the operation order to be inconsistent among chunks
+- For record append, append never cross the chunk boundary, so the record append is defined. but some chunks might contain multiple copies of same record
 
