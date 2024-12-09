@@ -143,6 +143,16 @@ This is a note for some basic concepts in distributed system.
   - [Lease](#lease)
   - [Record append](#record-append)
   - [Consistency Model](#consistency-model)
+- [Big Table](#big-table)
+  - [Design Assumptions](#design-assumptions-1)
+    - [Why not use commercial DB](#why-not-use-commercial-db)
+  - [Goals](#goals)
+  - [Big Table](#big-table-1)
+    - [Components](#components)
+    - [Data model](#data-model-1)
+      - [Rows](#rows)
+      - [Tablets](#tablets)
+    - [Structure](#structure)
 
 
 ## RPC
@@ -1292,4 +1302,91 @@ backup2 is not able to receive the data, if the primary retries to append data o
 ![GFS_con](image-16.png)
 - the consistent and undefined for concurrent successes of writes indicates that there might be leader shift in the chunk boundaries, which might cause the operation order to be inconsistent among chunks
 - For record append, append never cross the chunk boundary, so the record append is defined. but some chunks might contain multiple copies of same record
+
+## Big Table
+
+### Design Assumptions
+
+- Lots of semi-structured data
+  - URLs: Contents, crawl metadata(when, response code), links, anchors
+  - Per-user Data: User preferences settings, recent queries, search results
+  - Geographical locations: Physical entities – shops, restaurants, roads
+- Large Scale
+  - Billions of URLs, many versions/page - 20KB/page
+  - Hundreds of millions of users, thousands of queries/sec – Latency requirement
+  - 100+TB of satellite image data
+
+#### Why not use commercial DB
+
+- Scale is too large for most commercial databases
+  - Even if it weren’t, cost would be very high
+- Low-level storage optimizations help performance significantly
+  - Much harder to do when running on top of a database layer
+
+### Goals
+
+- asynchronous processes to be continuously updating different pieces of data
+  - access to most current data at any time
+- Need to support:
+  - Very high read/write rates
+  - Efficient scans over all or interesting subsets of data
+  - Efficient joins of large one-to-one and one-to-many datasets
+- Often want to examine data changes over time
+  - Contents of a web page over multiple crawls
+
+### Big Table 
+
+- A distributed storage system for managing structured data that is designed to scale to a very large size
+
+- Distributed multi-level map
+- Fault-tolerant, persistent
+- Self-managing
+  - Servers can be added/removed dynamically
+  - Servers adjust to load imbalance
+
+#### Components
+
+- Google file system (GFS): raw storage, stores persistent state
+- Scheduler: schedule jobs onto machines
+- Lock service : distributed lock manager, coordinator election, location bootstrapping
+- Mapreduce: large-scale data processing, used to read/write BigTable data
+
+#### Data model
+
+![Big_Table_data_model](image-17.png)
+
+- Distributed multi-dimensional sparse map
+  - `(row, column, timestamp)` -> cell contents
+
+##### Rows
+- Name is an arbitrary string
+  - Access to data in a row is atomic
+  - Row creation is implicit upon storing data
+- Rows ordered lexicographically
+  - Rows close together lexicographically usually on one or a small number of machines
+
+![store_url](image-18.png)
+
+- usually URL is stored in the reversed ordering
+  - for locality reasons
+  - because of the url's structure, the reversed url will have the same prefix for the same domain
+
+##### Tablets
+
+![tablets](image-19.png)
+
+- Large table broken into tablets at row boundaries
+  - Tablet holds contiguous range of rows
+  - Clients can often choose row keys to achieve locality
+  - Aim for ~100MB to 200MB of data per tablet
+- Serving machine responsible for ~100 tablets
+  - Fast recovery
+    - 100 machines each pick up 1 tablet from failed machine
+  - Fine-grained load balancing
+    - Migrate tablets away from overloaded machine
+    - Coordinator makes load-balancing decisions
+
+#### Structure
+
+![structure](image-20.png)
 
