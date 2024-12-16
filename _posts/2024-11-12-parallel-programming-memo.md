@@ -150,7 +150,7 @@ more efficiently and/or expose more ILP to the CPU)
 
 #### Loop-independent and Loop-carried Dependence
 
-![loop_dep](image-21.png)
+![loop_dep](/assets/img/image-21.png)
 
 - Loop-independent dependence
   - Dependence exists within an iteration
@@ -168,7 +168,7 @@ Iteration-space Traversal Graph (ITG)
   - Node = a point in the iteration space
   - Directed Edge = the next point that will be encountered after the current point is traversed
 
-![ITG](image-22.png)
+![ITG](/assets/img/image-22.png)
 
 Loop-carried Dependence Graph (LDG)
 
@@ -176,24 +176,24 @@ Loop-carried Dependence Graph (LDG)
   - Node = a point in the iteration space
   - Directed Edge = the dependence
 
-![LDG](image-23.png)
+![LDG](/assets/img/image-23.png)
 
-- ![example_1](image-24.png)
-- ![example_2](image-25.png)
+- ![example_1](/assets/img/image-24.png)
+- ![example_2](/assets/img/image-25.png)
 
-![example_3](image-30.png)
-![ans](image-31.png)
+![example_3](/assets/img/image-30.png)
+![ans](/assets/img/image-31.png)
 
 ### Loop Optimization
 
 #### Loop Invariant Hoisting
 
-![loop_Hoisting](image-26.png)
+![loop_Hoisting](/assets/img/image-26.png)
 
 #### Loop Unrolling
 
-![loop_unrolling](image-27.png)
-![loop_unrolling_1](image-28.png)
+![loop_unrolling](/assets/img/image-27.png)
+![loop_unrolling_1](/assets/img/image-28.png)
 
 Benefits
 - Expose additional ILP (instruction level parallelism)
@@ -207,36 +207,36 @@ Drawbacks
 
 #### Loop Fusion
 
-![loop_fusion](image-29.png)
+![loop_fusion](/assets/img/image-29.png)
 
 #### Loop Fission
 
-![loop_fission](image-32.png)
+![loop_fission](/assets/img/image-32.png)
 
 #### Loop Peeling
 
-![loop_peeling](image-33.png)
+![loop_peeling](/assets/img/image-33.png)
 
 #### Loop Unswitching
 
-![loop_unswitching](image-34.png)
+![loop_unswitching](/assets/img/image-34.png)
 
 #### Loop Interchange
 
-![loop_Interchange](image-35.png)
+![loop_Interchange](/assets/img/image-35.png)
 
 - Loop Interchange is safe if outermost loop does not carry any data dependence from one statement instance executed for i and j to another statement instance executed for i’ and j’ where (i < i’ and j > j’) OR (i > i’ and j < j’)
 
 #### Loop reversal
 
-![loop_reversal](image-36.png)
+![loop_reversal](/assets/img/image-36.png)
 
 
 #### Loop Unroll and Jam
 
 - Partially unroll one or more loops higher in the loop nest than the innermost loop, and then fuse (jam) resulting loops back together
 
-![unroll_jam](image-37.png)
+![unroll_jam](/assets/img/image-37.png)
 
 
 #### Loop Strip Mining
@@ -245,11 +245,11 @@ Drawbacks
   - Outer loop steps through index in blocks of some size 
   - Inner loop iterates through each block
   
-![strip](image-38.png)
+![strip](/assets/img/image-38.png)
 
 #### Loop Tiling
 
-![tiling](image-39.png)
+![tiling](/assets/img/image-39.png)
 
 ## Cache Performance
 
@@ -274,17 +274,17 @@ Drawbacks
 
 ### Matrix Multiplication Example
 
-- ![ijk](image-41.png)
-- ![kij](image-42.png)
-- ![jki](image-43.png)
-- ![summary](image-44.png)
+- ![ijk](/assets/img/image-41.png)
+- ![kij](/assets/img/image-42.png)
+- ![jki](/assets/img/image-43.png)
+- ![summary](/assets/img/image-44.png)
 
 ## Memory Systems
 
 ### DRAM Performance
 
-![DRAM](image-45.png)
-![one_core](image-46.png)
+![DRAM](/assets/img/image-45.png)
+![one_core](/assets/img/image-46.png)
 
 ## Amdahl's Law
 
@@ -324,7 +324,7 @@ Computes call times
 
 ### Hardware Performance Counters
 
-![perf_count](image-47.png)
+![perf_count](/assets/img/image-47.png)
 
 - A dedicated set of special purpose registers (SPRs)
 - Perf counters contained in a hardware unit
@@ -420,18 +420,18 @@ Fits well with RISC architectures
 
 ### Data Parallelism
 
-![SIMD](image-48.png)
+![SIMD](/assets/img/image-48.png)
 
 ### SuperScalar Processor
 
-![super_scalar](image-49.png)
+![super_scalar](/assets/img/image-49.png)
 
 - Expose **Instruction-Level Parallelism (ILP)** 
 - Process multiple instructions in parallel through stages
   - Add more hardware to fetch, decode, execute > 1 instruction 
   - Multiple execution units or ALUs
 
-![another_example](image-50.png)
+![another_example](/assets/img/image-50.png)
 
 - Can send N instructions per cycle from instruction buffer to available execution units 
 - Many modern processors are also out-of-order OoO 
@@ -447,7 +447,7 @@ Fits well with RISC architectures
    -  Should order instructions to minimize impact of hazards
    -  Reordering restricted by control & data dependences
 
-![resource_hazard](image-51.png)
+![resource_hazard](/assets/img/image-51.png)
 
 This is a resource hazard example for the In order processor
 
@@ -460,7 +460,7 @@ If rescheduling is allowed, the processor can execute the instructions in a diff
 
 ### Levels of Parallelism for Parallel Procs
 
-![Parallel](image-52.png)
+![Parallel](/assets/img/image-52.png)
 
 - Program level parallelism
   - Various independent programs execute together
@@ -490,7 +490,7 @@ If rescheduling is allowed, the processor can execute the instructions in a diff
 
 ### Shared Memory vs. Message Passing
 
-![two_methods](image-53.png)
+![two_methods](/assets/img/image-53.png)
 
 
 
@@ -1381,7 +1381,7 @@ MapReduce framework does several things
 
 Iteratively converges to correct value (e.g. Temperature), by computing new values at each point from the average of neighboring points.
 
-![jacobi](image-54.png)
+![jacobi](/assets/img/image-54.png)
 
 update all values until convergence
 
@@ -1456,7 +1456,7 @@ update all values until convergence
     }
   ```
 
-  ![SIMD](image-55.png)
+  ![SIMD](/assets/img/image-55.png)
 
 ### OpenMP Target Directives
 
@@ -1469,10 +1469,10 @@ Offloads execution and associated data from the CPU to the GPU
 #### Target the GPU
 
 - implicitly
-  ![Target_GPU](image-56.png)
+  ![Target_GPU](/assets/img/image-56.png)
 
 - explicitly
-  ![Target_GPU_E](image-57.png)
+  ![Target_GPU_E](/assets/img/image-57.png)
   - `alloc` clause: allocate memory on the device
   - `to` clause: copy data from host to device
   - `from` clause: copy data from device to host
@@ -1488,9 +1488,9 @@ Offloads execution and associated data from the CPU to the GPU
 
 ### OpenMP Teams
 
-![teams](image-58.png)
-![distributed](image-59.png)
-![target_data](image-60.png)
+![teams](/assets/img/image-58.png)
+![distributed](/assets/img/image-59.png)
+![target_data](/assets/img/image-60.png)
 
 ```c++
   #pragma omp target data map(alloc:Anew) map(A)
@@ -1533,10 +1533,10 @@ Currently both our distributed and workshared parallelism comes from the same lo
 - We could collapse them together The `COLLAPSE(N)` clause
 - Turns the next N loops into one, linearized loop.
 - This will give us more parallelism to distribute, if we so choose.
-![within_teams](image-61.png)
+![within_teams](/assets/img/image-61.png)
 
 Also like this (same effect):
-![collapse](image-62.png)
+![collapse](/assets/img/image-62.png)
 
 ### Improve Loop Scheduling
 
@@ -1545,7 +1545,7 @@ Most OpenMP compilers will apply a static schedule to workshared loops, assignin
 - This is great on CPUs, but bad on GPUs 
 The SCHEDULE() clause can be used to adjust how loop iterations are scheduled.
 
-![schedule_fri](image-63.png)
+![schedule_fri](/assets/img/image-63.png)
 
 ```c++
 
@@ -1576,7 +1576,7 @@ The SCHEDULE() clause can be used to adjust how loop iterations are scheduled.
 
 or with collapse:
 
-![collapse](image-64.png)
+![collapse](/assets/img/image-64.png)
 
 result:
-![result_perf](image-65.png)
+![result_perf](/assets/img/image-65.png)
