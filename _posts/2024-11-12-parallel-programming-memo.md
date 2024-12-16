@@ -27,6 +27,51 @@ This is a note for parallel programming, including OpenMP, Pthread, and MPI.
 ## Table of Contents
 - [Introduction](#introduction)
 - [Table of Contents](#table-of-contents)
+- [Loop Transformation](#loop-transformation)
+  - [Performancs Primer](#performancs-primer)
+  - [Data Dependency](#data-dependency)
+    - [Loop-independent and Loop-carried Dependence](#loop-independent-and-loop-carried-dependence)
+    - [ITG and LDG](#itg-and-ldg)
+  - [Loop Optimization](#loop-optimization)
+    - [Loop Invariant Hoisting](#loop-invariant-hoisting)
+    - [Loop Unrolling](#loop-unrolling)
+    - [Loop Fusion](#loop-fusion)
+    - [Loop Fission](#loop-fission)
+    - [Loop Peeling](#loop-peeling)
+    - [Loop Unswitching](#loop-unswitching)
+    - [Loop Interchange](#loop-interchange)
+    - [Loop reversal](#loop-reversal)
+    - [Loop Unroll and Jam](#loop-unroll-and-jam)
+    - [Loop Strip Mining](#loop-strip-mining)
+    - [Loop Tiling](#loop-tiling)
+- [Cache Performance](#cache-performance)
+  - [Cache Access Patterns](#cache-access-patterns)
+  - [Latency vs. Bandwidth](#latency-vs-bandwidth)
+  - [Matrix Multiplication Example](#matrix-multiplication-example)
+- [Memory Systems](#memory-systems)
+  - [DRAM Performance](#dram-performance)
+- [Amdahl's Law](#amdahls-law)
+- [Profiling](#profiling)
+  - [Two main types of profiling](#two-main-types-of-profiling)
+    - [Flat Profile](#flat-profile)
+    - [Call-graph Profile](#call-graph-profile)
+  - [Profiler Data Collection](#profiler-data-collection)
+  - [Hardware Performance Counters](#hardware-performance-counters)
+    - [Events Categories](#events-categories)
+    - [Performance Counter Events](#performance-counter-events)
+    - [Performance Counter Uses](#performance-counter-uses)
+- [Intro to Parallelism](#intro-to-parallelism)
+  - [Types of Parallelism](#types-of-parallelism)
+  - [Processor Pipelining](#processor-pipelining)
+    - [Pipeline hazards](#pipeline-hazards)
+    - [Limitations on pipelining](#limitations-on-pipelining)
+  - [Data Parallelism](#data-parallelism)
+  - [SuperScalar Processor](#superscalar-processor)
+  - [Instruction Scheduling](#instruction-scheduling)
+  - [Multicore Processors](#multicore-processors)
+  - [Levels of Parallelism for Parallel Procs](#levels-of-parallelism-for-parallel-procs)
+- [Parallel Programming Models](#parallel-programming-models)
+  - [Shared Memory vs. Message Passing](#shared-memory-vs-message-passing)
 - [Creating a Parallel Program](#creating-a-parallel-program)
   - [Code Analysis](#code-analysis)
   - [Algorithm Analysis](#algorithm-analysis)
@@ -68,6 +113,385 @@ This is a note for parallel programming, including OpenMP, Pthread, and MPI.
   - [MPI (Message Passing Interface)](#mpi-message-passing-interface)
   - [MapReduce](#mapreduce)
     - [OverView](#overview)
+- [Programming for Accelerators w/ Directives](#programming-for-accelerators-w-directives)
+  - [Jacobi Iteration](#jacobi-iteration)
+  - [CPU-Parallelism](#cpu-parallelism)
+  - [OpenMP Target Directives](#openmp-target-directives)
+    - [Target the GPU](#target-the-gpu)
+  - [GPU Basics (Nvidia specific)](#gpu-basics-nvidia-specific)
+  - [OpenMP Teams](#openmp-teams)
+  - [Increasing Parallelism](#increasing-parallelism)
+  - [Improve Loop Scheduling](#improve-loop-scheduling)
+
+## Loop Transformation
+
+### Performancs Primer
+
+Performance = Executed Instructions * CPI * (1 / CPU frequency)
+
+- Performance = wall clock time, time consumed by the program
+- CPI = average cycles per instruction
+  - CPI can be less than  due to superscalar
+
+- Assuming a fixed hardware system
+  - Reducing the number of program instructions
+  - Reducing the average CPI (making the instructions execute
+more efficiently and/or expose more ILP to the CPU)
+
+### Data Dependency
+
+- Instruction A comes before instruction B in program order
+- True Dependence
+  - Input of instruction B is produced as an output of instruction A
+- Anti Dependence
+  - Output of instruction B is an input of instruction A
+- Output Dependence
+  - Output of instruction B is an output of instruction A
+
+#### Loop-independent and Loop-carried Dependence
+
+![loop_dep](image-21.png)
+
+- Loop-independent dependence
+  - Dependence exists within an iteration
+  - If loop is removed, the dependence still exists
+- Loop-carried dependence
+  - Dependence exists across iterations
+  - If loop is removed, the dependence no longer exists
+
+#### ITG and LDG
+
+Iteration-space Traversal Graph (ITG)
+
+- ITG shows graphically the order of traversal in the iteration space
+(happens-before relationship)
+  - Node = a point in the iteration space
+  - Directed Edge = the next point that will be encountered after the current point is traversed
+
+![ITG](image-22.png)
+
+Loop-carried Dependence Graph (LDG)
+
+- LDG shows the true/anti/output dependence relationship graphically
+  - Node = a point in the iteration space
+  - Directed Edge = the dependence
+
+![LDG](image-23.png)
+
+- ![example_1](image-24.png)
+- ![example_2](image-25.png)
+
+![example_3](image-30.png)
+![ans](image-31.png)
+
+### Loop Optimization
+
+#### Loop Invariant Hoisting
+
+![loop_Hoisting](image-26.png)
+
+#### Loop Unrolling
+
+![loop_unrolling](image-27.png)
+![loop_unrolling_1](image-28.png)
+
+Benefits
+- Expose additional ILP (instruction level parallelism)
+- Reduce instruction count (fewer loop management instructions)
+Drawbacks
+- Potentially use more registers
+  -  May cause register spilling
+     - Save registers to memory with stores
+     - Restore registers from memory later with loads
+- Increases code size => use more of the instruction cache
+
+#### Loop Fusion
+
+![loop_fusion](image-29.png)
+
+#### Loop Fission
+
+![loop_fission](image-32.png)
+
+#### Loop Peeling
+
+![loop_peeling](image-33.png)
+
+#### Loop Unswitching
+
+![loop_unswitching](image-34.png)
+
+#### Loop Interchange
+
+![loop_Interchange](image-35.png)
+
+- Loop Interchange is safe if outermost loop does not carry any data dependence from one statement instance executed for i and j to another statement instance executed for i’ and j’ where (i < i’ and j > j’) OR (i > i’ and j < j’)
+
+#### Loop reversal
+
+![loop_reversal](image-36.png)
+
+
+#### Loop Unroll and Jam
+
+- Partially unroll one or more loops higher in the loop nest than the innermost loop, and then fuse (jam) resulting loops back together
+
+![unroll_jam](image-37.png)
+
+
+#### Loop Strip Mining
+
+- Transforms singly-nested loop into doubly-nested loop 
+  - Outer loop steps through index in blocks of some size 
+  - Inner loop iterates through each block
+  
+![strip](image-38.png)
+
+#### Loop Tiling
+
+![tiling](image-39.png)
+
+## Cache Performance
+
+- Cache Performance = Hit Time * Hit Rate + Miss Time * Miss Rate
+
+### Cache Access Patterns
+
+- Data set size
+  - As data set grows larger than a cache level, performance drops
+- Stride
+  - Affects spatial locality provided by cache blocks
+  - stride is less than size of a cache line: Initial access may cause cache miss, sequential accesses are fast
+  - stride is greater than size of a cache line: Sequential accesses are slow
+
+### Latency vs. Bandwidth
+
+- Latency: Hit time for a cache level or memory
+  - Pointer Chasing: Stresses the latency of each access, Only one memory access in flight at a given time
+- Bandwidth: Rate
+  - Bandwidth gets smaller at lower levels of memory hierarchy
+  - Some code is throughput sensitive, not latency sensitive
+
+### Matrix Multiplication Example
+
+- ![ijk](image-41.png)
+- ![kij](image-42.png)
+- ![jki](image-43.png)
+- ![summary](image-44.png)
+
+## Memory Systems
+
+### DRAM Performance
+
+![DRAM](image-45.png)
+![one_core](image-46.png)
+
+## Amdahl's Law
+
+we'll skip this part.
+Look up amdahl's law and gustafson's law for more information.
+
+## Profiling
+
+See what takes time in a large program
+
+### Two main types of profiling
+
+#### Flat Profile
+
+Only computes average time in a particular function 
+
+Does not include other (useful) info, like callees
+
+#### Call-graph Profile
+
+Computes call times 
+- Reports frequency of function calls
+- Gives a call graph 
+  -  Which functions are called by which other functions 
+  -  Which functions call which other functions
+
+### Profiler Data Collection
+
+- Statistical
+  - Take samples of system state:
+  - like every 2ms, check the system state
+- Instrumentation
+  - Add additional instructions at specified program points:
+    - Can do this at compile time or run time (run time is expensive)
+    - Can instrument either manually or automatically
+    - Like conditional breakpoints
+
+### Hardware Performance Counters
+
+![perf_count](image-47.png)
+
+- A dedicated set of special purpose registers (SPRs)
+- Perf counters contained in a hardware unit
+  - Called Performance Monitoring Unit (PMU)
+  - May be multiple PMUs on a chip
+    - Processor core PMU, Cache/Memory PMU
+- Counters configurable to hold counts of HW activities
+  - Architecture defines HW events that can be counted
+- Counters can be read by software for analysis
+
+#### Events Categories
+
+Processor pipeline events
+- Instructions fetched, executed, committed
+- Elapsed cycles
+- Branch mispredictions
+- Execution of different instruction types
+- Pipeline hazards and delays
+- Might allow construction of a CPI (cycles per instruction) stack
+
+Cache events
+- Cache accesses, hits, misses
+- Cache snoops, invalidations
+
+Memory events
+- Memory accesses
+- Memory read/write bytes
+- Memory bandwidth
+
+#### Performance Counter Events
+
+Architecture will define events for collection
+
+- Typically described in an architecture or perf analysis guide
+- SW tools (e.g. profilers) provide an easier interface
+- To interact with the HW perf counters
+- To turn on PMUs to enable counting
+- To select events to count
+- To extract counts from the perf counters
+
+#### Performance Counter Uses
+
+- Enable low-level performance analysis & tuning
+  - By application developers
+  - System software
+- Enable performance validation of the processor design
+  - Run targeted code sequences on a processor
+  - Verify that measured performance counter values match expectation
+
+## Intro to Parallelism
+
+### Types of Parallelism
+
+Sources of parallelism in high-performance CPUs
+- CPU Pipelining
+  - Different pipe stages work on different instructions simultaneously
+- Data Parallelism
+  - SIMD - Single Instruction, Multiple Data
+- Superscalar
+  - Multiple instructions fetched, decoded, issued, executed, committed per clock cycle
+- HW multi-threading (e.g. SMT - simultaneous multithreading)
+  - Multiple threads run simultaneously on one CPU core
+- Multicore
+  - Multiple processor cores execute different threads/processes
+
+### Processor Pipelining
+
+Fits well with RISC architectures
+- N-fold improvement in instruction throughput compared to simple processor
+  - N = # of stages
+- Ideally pipelined processor will complete 1 instruction per cycle
+- Current processors use many pipeline stages
+  - A few tens of stages
+  - Improves parallelism and increases clock rate
+  - But there are drawbacks too…
+
+#### Pipeline hazards
+
+- Control hazards
+  - Branches, jumps, etc.
+  - Can be resolved with branch prediction
+- Data hazards
+  - Data dependencies between instructions
+  - Can be resolved with forwarding, stalling, etc.
+
+#### Limitations on pipelining
+
+- Processor frequency (cycle time) is bound by slowest stage 
+- Deeper pipelines result in worse penalties for hazards 
+  - More cycles required to process for long-latency events 
+  - More cycles to refill processor pipeline after branch misprediction 
+  - More instruction processing work to throw away
+
+### Data Parallelism
+
+![SIMD](image-48.png)
+
+### SuperScalar Processor
+
+![super_scalar](image-49.png)
+
+- Expose **Instruction-Level Parallelism (ILP)** 
+- Process multiple instructions in parallel through stages
+  - Add more hardware to fetch, decode, execute > 1 instruction 
+  - Multiple execution units or ALUs
+
+![another_example](image-50.png)
+
+- Can send N instructions per cycle from instruction buffer to available execution units 
+- Many modern processors are also out-of-order OoO 
+  - Can send instructions for execution OoO from instruction buffer 
+  - Hardware keeps track of which instructions have inputs ready
+
+- Pipeline resource hazards in addition to control & data hazards
+  - E.g. cannot begin execution of 3 divide instructions in a cycle, if there is only 2 divide units
+
+### Instruction Scheduling
+
+-  order program instructions to maximize all of this parallelism & keep execution resources busy
+   -  Should order instructions to minimize impact of hazards
+   -  Reordering restricted by control & data dependences
+
+![resource_hazard](image-51.png)
+
+This is a resource hazard example for the In order processor
+
+If rescheduling is allowed, the processor can execute the instructions in a different order to avoid the resource hazard.
+
+### Multicore Processors
+
+- ILP Improvements Slowing Down
+- More and more cores per chip
+
+### Levels of Parallelism for Parallel Procs
+
+![Parallel](image-52.png)
+
+- Program level parallelism
+  - Various independent programs execute together
+  - no communication between programs
+  - Hard to load balance
+  - Low degree of parallelism
+- Task level parallelism
+  - Arbitrary code segments in a single program
+  - Large granularity, low overhead, low communication
+  - Hard to load balance
+  - Low degree of parallelism
+- Loop level parallelism
+  - Only can be reach when Each iteration can be computed independently
+  - Very high parallelism
+  - easy to achieve load balance
+
+## Parallel Programming Models
+- An abstraction provided by the hardware to programmers
+- Determines how easy/difficult for programmers to express their algorithms into computation tasks that the hardware understands
+
+- Uniprocessor programming model
+- Multiprocessor programming model
+  - Shared Memory / Shared Address Space
+    - Each memory location visible to all processors
+  - Message Passing
+    - Each memory location visible to 1 (or a subset of) processors
+
+### Shared Memory vs. Message Passing
+
+![two_methods](image-53.png)
+
 
 
 ## Creating a Parallel Program
@@ -543,6 +967,7 @@ at each hierarchy level
   - `BARRIER (name, nprocs)`:Thread will wait at barrier call until nprocs threads arrive
     - Built using lower level primitives
     - Heavyweight operation
+- **Groups Event Synchronization**
   - Synchronize across a subset of all parallel processes
     - Done using flags or barriers
     - Basic concept of producers and consumers
@@ -560,7 +985,7 @@ at each hierarchy level
 - POSIX pthreads: a standard for thread creation and management
 - Basic Usage: 
   - `#include <pthread.h>`
-  - `gcc –o p_test p_test.c –lpthread`
+  - `gcc -o p_test p_test.c -lpthread`
 - Create a pthread:
   - `int pthread_create(pthread_t *thread, pthread_attr_t *attr, void
 *(*start_routine)(void *), void *arg);`
@@ -898,13 +1323,13 @@ A language-independent communication protocol for parallel-computers
 - MPI Compile and Run:
   - Compile
     ```shell
-      mpirun –np <num_processors> <program>
-      mpiexec –np < num_processors> <program> # a synonym
+      mpirun -np <num_processors> <program>
+      mpiexec -np < num_processors> <program> # a synonym
     ```
   - Start processes
     ```shell
       > mpicc hello_mpi.c
-      > mpirun –np 4 a.out
+      > mpirun -np 4 a.out
       0: We have 4 processors
       0: Hello 1! Processor 1 reporting for duty
       0: Hello 2! Processor 2 reporting for duty
@@ -912,7 +1337,7 @@ A language-independent communication protocol for parallel-computers
     ```
   - By default, MPI chooses lowest-latency communication resource available; shared memory in this case
   - MPMD (Multiple Program, Multiple Data) execution
-    - `mpirun –np 2 a.out : –np 2 b.out`
+    - `mpirun -np 2 a.out : -np 2 b.out`
       - launches a single parallel application
       - All in the same MPI_COMM_WORLD
       - Ranks 0 and 1 are of instances a.out
@@ -949,3 +1374,209 @@ MapReduce framework does several things
 - Combine
   - Optional step
   - Could do reduce step for in-memory values after map
+
+## Programming for Accelerators w/ Directives
+
+### Jacobi Iteration
+
+Iteratively converges to correct value (e.g. Temperature), by computing new values at each point from the average of neighboring points.
+
+![jacobi](image-54.png)
+
+update all values until convergence
+
+- original code
+  ```c++
+    while ( err > tol && iter < iter_max ) { //Convergence Loop
+      err=0.0;
+      for( int j = 1; j < n-1; j++) {
+        for(int i = 1; i < m-1; i++) {
+          Anew[j][i] = 0.25 * (A[j][i+1] + A[j][i-1] + A[j-1][i] + A[j+1][i]);
+          err = max(err, abs(Anew[j][i] - A[j][i]));
+        }
+      }
+      for( int j = 1; j < n-1; j++) {
+        for( int i = 1; i < m-1; i++ ) {
+          A[j][i] = Anew[j][i];
+        }
+      }
+      iter++;
+    }
+  ```
+
+### CPU-Parallelism
+
+- CPU-Parallelism
+  ```c++
+    while ( error > tol && iter < iter_max )
+    {
+      error = 0.0;
+      #pragma omp parallel for reduction(max:error)
+      for( int j = 1; j < n-1; j++) {
+        for( int i = 1; i < m-1; i++ ) {
+          Anew[j][i] = 0.25 * ( A[j][i+1] + A[j][i-1] + A[j-1][i] + A[j+1][i]);
+          error = fmax( error, fabs(Anew[j][i] - A[j][i]));
+        }
+      }
+
+      #pragma omp parallel for
+      for( int j = 1; j < n-1; j++) {
+        for( int i = 1; i < m-1; i++ ) {
+          A[j][i] = Anew[j][i];
+        }
+      }
+      if(iter++ % 100 == 0) printf("%5d, %0.6f\n", iter, error);
+    }
+  ```
+
+- Reduce time of thread creation
+  ```c++
+    while ( error > tol && iter < iter_max )
+    {
+      error = 0.0;
+      #pragma omp parallel
+      {      
+        #pragma omp for reduction(max:error)
+        for( int j = 1; j < n-1; j++) {
+          for( int i = 1; i < m-1; i++ ) {
+            Anew[j][i] = 0.25 * ( A[j][i+1] + A[j][i-1] + A[j-1][i] + A[j+1][i]);
+            error = fmax( error, fabs(Anew[j][i] - A[j][i]));
+          }
+        }
+
+        #pragma omp barrier
+        #pragma omp for
+        for( int j = 1; j < n-1; j++) {
+          for( int i = 1; i < m-1; i++ ) {
+            A[j][i] = Anew[j][i];
+          }
+        }
+      }
+      if(iter++ % 100 == 0) printf("%5d, %0.6f\n", iter, error);
+    }
+  ```
+
+  ![SIMD](image-55.png)
+
+### OpenMP Target Directives
+
+Offloads execution and associated data from the CPU to the GPU
+
+- The target device owns the data, accesses by the CPU during the execution of the target region are forbidden.
+- Data used within the region may be implicitly or explicitly **mapped to the device**.
+- All of OpenMP is allowed within target regions, but only a subset will run well on GPUs.
+
+#### Target the GPU
+
+- implicitly
+  ![Target_GPU](image-56.png)
+
+- explicitly
+  ![Target_GPU_E](image-57.png)
+  - `alloc` clause: allocate memory on the device
+  - `to` clause: copy data from host to device
+  - `from` clause: copy data from device to host
+  - `tofrom` clause: copy data from host to device and back
+  - `map` clause: map data to the device
+
+### GPU Basics (Nvidia specific)
+
+- GPUs are composed of 1 or more independent parts, known as Streaming Multiprocessors (“SMs”)
+- Threads are organized into **threadblocks**. 
+- Threads within the same theadblock run on an SM and can synchronize. 
+- Threads in different threadblocks (even if they’re on the same SM) cannot synchronize.
+
+### OpenMP Teams
+
+![teams](image-58.png)
+![distributed](image-59.png)
+![target_data](image-60.png)
+
+```c++
+  #pragma omp target data map(alloc:Anew) map(A)
+  while ( error > tol && iter < iter_max )
+  {
+    error = 0.0;
+    #pragma omp target teams distribute parallel for reduction(max:error)
+    for( int j = 1; j < n-1; j++)
+    {
+      for( int i = 1; i < m-1; i++ )
+      {
+        Anew[j][i] = 0.25 * ( A[j][i+1] + A[j][i-1] + A[j-1][i] + A[j+1][i]);
+        error = fmax( error, fabs(Anew[j][i] - A[j][i]));
+      }
+    }
+
+    #pragma omp target teams distribute parallel for
+    for( int j = 1; j < n-1; j++)
+    {
+      for( int i = 1; i < m-1; i++ )
+      {
+        A[j][i] = Anew[j][i];
+      }
+    }
+    if(iter % 100 == 0) printf("%5d, %0.6f\n", iter, error);
+    iter++;
+  }
+```
+
+- map only once for the entire loop
+- spawns thread teams
+- Distributes iterations to those teams
+- Workshares within those teams
+- parallel here will generate implicit barriers.
+
+### Increasing Parallelism
+
+Currently both our distributed and workshared parallelism comes from the same loop.
+- We could move the PARALLEL to the inner loop
+- We could collapse them together The `COLLAPSE(N)` clause
+- Turns the next N loops into one, linearized loop.
+- This will give us more parallelism to distribute, if we so choose.
+![within_teams](image-61.png)
+
+Also like this (same effect):
+![collapse](image-62.png)
+
+### Improve Loop Scheduling
+
+Most OpenMP compilers will apply a static schedule to workshared loops, assigning iterations in N / num_threads chunks.
+- Each thread will execute contiguous loop iterations, which is very cache & SIMD friendly
+- This is great on CPUs, but bad on GPUs 
+The SCHEDULE() clause can be used to adjust how loop iterations are scheduled.
+
+![schedule_fri](image-63.png)
+
+```c++
+
+  #pragma omp target teams distribute
+  for( int j = 1; j < n-1; j++)
+  {
+    #pragma omp parallel for reduction(max:error) schedule(static,1)
+    for( int i = 1; i < m-1; i++ )
+    {
+      Anew[j][i] = 0.25 * ( A[j][i+1] + A[j][i-1] + A[j-1][i] + A[j+1][i]);
+      error = fmax( error, fabs(Anew[j][i] - A[j][i]));
+    }
+  }
+
+  #pragma omp target teams distribute
+  for( int j = 1; j < n-1; j++)
+  {
+    #pragma omp parallel for schedule(static,1)
+    for( int i = 1; i < m-1; i++ )
+    {
+      A[j][i] = Anew[j][i];
+    }
+  }
+
+```
+
+- Assign adjacent threads adjacent loop iterations
+
+or with collapse:
+
+![collapse](image-64.png)
+
+result:
+![result_perf](image-65.png)
