@@ -709,7 +709,7 @@ Based on the Election restriction and Committing entries from previous terms rul
 #### Non-volatile memory
 
 - Follower should persist its vote for a candidate 
-![non_volatile](image.png)
+![non_volatile](/assets/img/image.png)
 
 ## Zookeeper
 
@@ -744,7 +744,7 @@ Zookeeper: replicating state
 
 ### Zookeeper Structure
 
-![zookeeper_struct](image-1.png)
+![zookeeper_struct](/assets/img/image-1.png)
 
 #### Two types of files
 
@@ -804,7 +804,7 @@ these apis are well tuned for concurrency and synchronization
   - ![linear_res](/assets/img/linear_res.png)
     
   - This one violate the linearizability
-    ![linear_violate](image-2.png)
+    ![linear_violate](/assets/img/image-2.png)
     - according to linearizability's second rule, C2's read X should be placed ahead of C3's read X
     - And the only possible sequential history violates the rule
 
@@ -841,7 +841,7 @@ these apis are well tuned for concurrency and synchronization
     - for different clients, the order of operations is not guaranteed
 
 ### Replicated Database
-  ![zoo_keeper](image-3.png)
+  ![zoo_keeper](/assets/img/image-3.png)
 
   - ZooKeeper uses periodic snapshots and only requires redelivery of messages since the start of the snapshot.
   - Snapshots are fuzzy since we do not lock the ZooKeeper state to take the snapshot
@@ -972,7 +972,7 @@ An address names a principal: an entity that can own coin.
 - owner may spend coin by publishing a signed statement (a “transaction”) to transfer it to another address
 
 #### Example of spending money
-![bitcoin_spend](image-4.png)
+![bitcoin_spend](/assets/img/image-4.png)
 
 - `<Transaction>: <Receiver's Pub Key>, <Amount>, <Signature>`
 - prior transaction acts as the proof of money ownership
@@ -985,7 +985,7 @@ Normally a central trusted party is needed to check for double spending
   - check the transaction log to see whether the coin is spent before
 
 ##### proof of work
-![proof_of_work](image-5.png)
+![proof_of_work](/assets/img/image-5.png)
 - Here T denotes the transaction, each block contains fixed number of transactions
 - Bitcoin clients broadcast transactions to every miners in system
 - Miners: maintain blockchain, create blocks and append
@@ -1002,7 +1002,7 @@ Why previous hash is included in the block?
 - to ensure the order of the blocks and preven from blocks being modified
 
 ### RSM Consensus without trust
-![block_log](image-6.png)
+![block_log](/assets/img/image-6.png)
 "Nakamoto Consensus": a consensus algorithm that allows a set of nodes to agree on a set of transactions without trusting each other
 - Randomly choose replica to append a new block of log entries
 - Each new block links securely to the previous block
@@ -1020,13 +1020,13 @@ How to obtain consensus?
 
 Longest valid chain wins: miners will dump the shorter chain once receiving a longer valid chain
 
-![alt text](image-7.png)
+![alt text](/assets/img/image-7.png)
 
 - if client's transaction is in the chain's tail-side blocks, then the transaction is confirmed
 
 #### Forks and healing
 
-![forks](image-8.png)
+![forks](/assets/img/image-8.png)
 
 - Forks: result from faults, partitions, races, or attacks
 - Over time, forks should resolve: one branch grows longer (attracts more “votes”) and so dominates
@@ -1042,13 +1042,13 @@ the only possibility for double spending is to let transactions appear on two di
 - Client can optionally include a transaction fee to the miner, Miner will prioritize transactions with higher fees
 
 ### Simplified Payment Verification
-![merkle_tree](image-9.png)
+![merkle_tree](/assets/img/image-9.png)
 - Merkle tree: a binary tree of hashes, where each leaf node is a hash of a data block, and each non-leaf node is a hash of its children
 - Payer can declare the block number where the transaction is included, and the Merkle Tree Path with that certain transaction is sent from the miner to the buyer
 - Receiver can verify the transaction by hashing the transaction and the Merkle Tree Path, and compare it with the root hash
 
 ### Value Splitting
-![value_splitting](image-10.png)
+![value_splitting](/assets/img/image-10.png)
 
 - UTXO: Unspent Transaction Output
   - Each transaction has a set of inputs and outputs
@@ -1136,7 +1136,7 @@ Ethereum is a decentralized platform that runs smart contracts: applications tha
   - If the transaction runs out of gas, all state changes revert, except for the payment(to the miner)
   - If the transaction finishes before gas running out, remaining gas is refunded
 
-![transition](image-11.png)
+![transition](/assets/img/image-11.png)
 In the example the `14c5f88a` should be `14c5f8ba`
 - trsaction from `14c5f8ba` to `bb75a980` with 10 ether
 - the code on the receiver account will be executed  
@@ -1196,7 +1196,7 @@ In the example the `14c5f88a` should be `14c5f8ba`
 
 ### GFS Architecture
 
-![GFS_Arch](image-12.png)
+![GFS_Arch](/assets/img/image-12.png)
 
 - A single coordinator and a set of chunkservers
 - Files are divided into fixed-size (64MB) chunks
@@ -1240,7 +1240,7 @@ In the example the `14c5f88a` should be `14c5f8ba`
 
 #### Write/Append workflow
 
-![GFS_Write](image-13.png)
+![GFS_Write](/assets/img/image-13.png)
 
 - Use primary back replication to create a 3-copy replicated system
 - This means clients needs to know which chunkserver is the primary
@@ -1276,8 +1276,8 @@ In the example the `14c5f88a` should be `14c5f8ba`
   
 ### Record append
 
-![record_append](image-14.png)
-![record_append_1](image-15.png)
+![record_append](/assets/img/image-14.png)
+![record_append_1](/assets/img/image-15.png)
 
 Here ths blue rectangle indicates the chunk.
 backup2 is not able to receive the data, if the primary retries to append data on backup2, the data will be appended somewhere else
@@ -1299,7 +1299,7 @@ backup2 is not able to receive the data, if the primary retries to append data o
   - Client 3 read, won't be case like ABA
   - If all clients see case ABA, then it's consistent but undefined
 
-![GFS_con](image-16.png)
+![GFS_con](/assets/img/image-16.png)
 - the consistent and undefined for concurrent successes of writes indicates that there might be leader shift in the chunk boundaries, which might cause the operation order to be inconsistent among chunks
 - For record append, append never cross the chunk boundary, so the record append is defined. but some chunks might contain multiple copies of same record
 
@@ -1353,7 +1353,7 @@ backup2 is not able to receive the data, if the primary retries to append data o
 
 #### Data model
 
-![Big_Table_data_model](image-17.png)
+![Big_Table_data_model](/assets/img/image-17.png)
 
 - Distributed multi-dimensional sparse map
   - `(row, column, timestamp)` -> cell contents
@@ -1365,7 +1365,7 @@ backup2 is not able to receive the data, if the primary retries to append data o
 - Rows ordered lexicographically
   - Rows close together lexicographically usually on one or a small number of machines
 
-![store_url](image-18.png)
+![store_url](/assets/img/image-18.png)
 
 - usually URL is stored in the reversed ordering
   - for locality reasons
@@ -1373,7 +1373,7 @@ backup2 is not able to receive the data, if the primary retries to append data o
 
 ##### Tablets
 
-![tablets](image-19.png)
+![tablets](/assets/img/image-19.png)
 
 - Large table broken into tablets at row boundaries
   - Tablet holds contiguous range of rows
@@ -1388,5 +1388,5 @@ backup2 is not able to receive the data, if the primary retries to append data o
 
 #### Structure
 
-![structure](image-20.png)
+![structure](/assets/img/image-20.png)
 
