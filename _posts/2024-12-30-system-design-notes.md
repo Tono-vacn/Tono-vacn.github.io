@@ -14,7 +14,53 @@ readtime: true
 
 A simple note for system design.
 
-## From *System Design Interview* by Alex Xu
+From *System Design Interview* by Alex Xu
+
+- [K-V Store](#k-v-store)
+  - [Design scopes](#design-scopes)
+  - [CAP Theorem](#cap-theorem)
+  - [System Components](#system-components)
+- [Unique ID Generator](#unique-id-generator)
+  - [Requirements](#requirements)
+  - [Probable solutions](#probable-solutions)
+    - [Multi-master replication](#multi-master-replication)
+    - [UUID](#uuid)
+    - [Ticket server](#ticket-server)
+    - [Snowflake](#snowflake)
+  - [Furhter problems](#furhter-problems)
+- [URL Shortener](#url-shortener)
+  - [API Design](#api-design)
+    - [Redirecting](#redirecting)
+    - [Shortening](#shortening)
+  - [Possible process](#possible-process)
+- [Web Crawler](#web-crawler)
+  - [Possible Requirements](#possible-requirements)
+  - [High-level design](#high-level-design)
+    - [Pick Seed URLs](#pick-seed-urls)
+    - [URL Frontier](#url-frontier)
+    - [HTML Downloader](#html-downloader)
+    - [DNS resolver](#dns-resolver)
+    - [Content Parser](#content-parser)
+    - [Content Seen Detector](#content-seen-detector)
+    - [Content Storage](#content-storage)
+    - [URL Extractor](#url-extractor)
+    - [URL filter](#url-filter)
+    - [URL Seen Detector](#url-seen-detector)
+  - [Way of Traverse](#way-of-traverse)
+  - [URL Frontier](#url-frontier-1)
+  - [HTML Downloader](#html-downloader-1)
+    - [Robots Exclusion Protocol](#robots-exclusion-protocol)
+    - [Performance optimization](#performance-optimization)
+  - [Extensibility](#extensibility)
+- [Notification System](#notification-system)
+  - [Main Components](#main-components)
+    - [iOS push notification](#ios-push-notification)
+    - [Android push notification](#android-push-notification)
+    - [SMS message](#sms-message)
+    - [Email](#email)
+    - [Contact info gathering flow](#contact-info-gathering-flow)
+    - [Notification sending flow](#notification-sending-flow)
+
 
 ### K-V Store
 
