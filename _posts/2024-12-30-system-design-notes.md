@@ -73,6 +73,12 @@ From *System Design Interview* by Alex Xu
   - [High-level design](#high-level-design-2)
     - [choice of network protocols](#choice-of-network-protocols)
     - [General Design](#general-design)
+    - [Storage](#storage)
+    - [Data Model](#data-model)
+  - [Deep Dive](#deep-dive)
+    - [Service discovery](#service-discovery)
+    - [Message flows](#message-flows)
+    - [Message synchronization across multiple devices](#message-synchronization-across-multiple-devices)
 
 
 ### K-V Store
@@ -574,14 +580,67 @@ Note: everything else does not have to be WebSocket (sign up, login, user profil
 
 ![general_design_for_chat](/assets/img/chat_design.png)
 
+- service discovery: give the client a list of DNS host names of chat servers that the client could connect to
+- chat service: only stateful service
+  - stateful because each client maintains a persistent network connection to a chat server
 
+adjusted version without single-server problem:
 
+![adjusted_version](/assets/img/adjusted_version.png)
+- chat servers: message sending/receiving
+- presence servers: online/offline status
+- API servers: everything stateless
+  - user login, signup, change profile, etc
+- KV store: chat history, for scenarios like offline user comes online
 
+##### Storage
 
+Relational or NOSQL database?
 
+- check data types
+  - generic data: user profile, setting, user friends list
+    - relational database 
+  - chat history data: 
+    - enormous
+    - only recent data is frequently accessed
+    - users might use features require random access (search, view your mentions, jump to specific messages)
+    - Read Write Ratio (R/W) is 1:1 for 1 on 1 chat
+    - Use KV store for chat history
+      - easy horizontal scaling
+      - very low latency to access data
+      - Relational databases do not handle long tail of data well
+      - Most existing services use KV store for chat history
 
+##### Data Model
 
+![message](/assets/img/message.png)
 
+![group_message](/assets/img/group_message.png)
 
+explanation about message ID:
+- IDs must be unique
+- IDs should be sortable by time, meaning new rows have higher IDs than old ones
+
+approach:
+- global ID generation: snowflake
+- local sequence number generator: because maintaining message sequence within one-on-one channel or a group channel is sufficient
+
+#### Deep Dive
+
+##### Service discovery
+
+recommend the best chat server for a client
+- Apache Zookeeper
+  - use znodes to store chat server IP addresses
+  - each chat server registers its IP address to Zookeeper
+  - check more details about zookeeper in *Common Sense for Distributed System*
+
+![explanation_server_discovery](/assets/img/server_discovery.png)
+
+##### Message flows
+
+![message_flow](/assets/img/message_flow.png)
+
+##### Message synchronization across multiple devices
 
 
