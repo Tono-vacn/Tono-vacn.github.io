@@ -60,6 +60,19 @@ From *System Design Interview* by Alex Xu
     - [Email](#email)
     - [Contact info gathering flow](#contact-info-gathering-flow)
     - [Notification sending flow](#notification-sending-flow)
+  - [Reliability](#reliability)
+  - [Addtional considerations](#addtional-considerations)
+- [News Feed System](#news-feed-system)
+  - [requirements](#requirements-1)
+  - [high-level design](#high-level-design-1)
+    - [Feed publishing](#feed-publishing)
+    - [Newsfeed building](#newsfeed-building)
+    - [Newsfeed cache](#newsfeed-cache)
+- [CHAT SYSTEM](#chat-system)
+  - [Requirements](#requirements-2)
+  - [High-level design](#high-level-design-2)
+    - [choice of network protocols](#choice-of-network-protocols)
+    - [General Design](#general-design)
 
 
 ### K-V Store
@@ -413,4 +426,162 @@ Third-party email services:
 ##### Notification sending flow
 
 ![notification](/assets/img/notification.png)
+![better_notification](/assets/img/better_notification.png)
 - service: a micro-service, a cron job, or a distributed system that triggers notification sending events
+- Notification system
+  - provides APIs 
+  - basic validation of contact info
+  - send notifications to message queues
+  - Query the database or cache to fetch data needed to render a notification
+- Third-party services
+  - extensibility matters
+  - service availability problems
+- Cache & Database: User info, device info, notification templates, Settings
+- Message queues: decouple & buffer
+- Worker: simple logic, send notifications
+
+#### Reliability
+
+1. notification should be never-lost
+   - database persistence: workers can hold notification log database
+   - retry mechanism
+
+2. exactly-once: can't ensure exactly-once delivery
+   - dedupe mechanism: use Event ID to ensure idempotency
+
+#### Addtional considerations
+
+1. template reusing
+2. notification settings
+   - give users fine-grained control over notification settings
+   - use setting table to store user settings
+3. rate limiting
+4. retry mechanism
+5. security
+   - appKey
+   - appSecret
+6. monitor queue
+   - total number of queued notifications should be controlled
+7. Event tracking
+   - "bury the point"
+
+![final_design](/assets/img/final_notification.png)
+
+
+### News Feed System
+
+
+#### requirements
+
+- user can publish a post and see her friends’ posts on the news feed page
+- feed is sorted mainly by reverse chronological order
+- 10 million DAU
+- contain media files, including both images and videos
+
+#### high-level design
+
+- Feed publishing: a user publishes a post, corresponding data is written into cache and database. A post is populated to her friends’ news feed.
+- Newsfeed building: assume the news feed is built by aggregating friends’ posts in *reverse chronological* order.
+
+##### Feed publishing
+
+![feed](/assets/img/feed_pub.png)
+
+- Post service: persist post in the database and cache.
+- Fanout service: push new content to friends’ news feed. Newsfeed data is stored in the cache for fast retrieval.
+- Notification service: inform friends that new content is available and send out push notifications.
+
+![feed_final](/assets/img/feed_final.png)
+
+- fanout service
+  - fanout on write (also called push model): A new post is delivered to friends’ cache immediately after it is published
+    - Pros: 
+      - news feed is generated in real-time and can be pushed to friends immediately
+      - Fetching news feed is fast
+    - Cons:
+      - hotkey problem: a user has a large number of friends, fetching the friend list and generating news feeds for all of them are slow and time consuming
+      - For inactive users or those rarely log in, pre-computing news feeds waste computing resources
+  - fanout on read (also called pull model): The news feed is generated during read time. This is an on-demand model.
+    - Pros:
+      - For inactive users or those who rarely log in, fanout on read works better because it will not waste computing resources on them
+      - Data is not pushed to friends so there is no hotkey problem
+    - Cons:
+      - Fetching the news feed is slow as the news feed is not pre-computed
+  - Pratical Solution: Hybrid model
+    - push model for the majority of users
+    - pull model for celebrity users or those with a large number of friends
+    -  Consistent hashing is a useful technique to mitigate the hotkey problem as it helps to distribute requests/data more evenly
+
+##### Newsfeed building
+
+![newsfeed](/assets/img/newsfeed.png)
+
+- Newsfeed service: news feed service fetches news feed from the cache.
+- Newsfeed cache: store news feed IDs needed to render the news feed.
+
+![retrieval](/assets/img/retrieval.png)
+
+##### Newsfeed cache
+
+like `<post_id, user_id>` mapping table
+
+### CHAT SYSTEM
+
+#### Requirements
+
+- support both 1 on 1 and group chat
+- support 50 million daily active users (DAU)
+- group member limit: maximum of 100 people
+- only supports text messages
+- text length should be less than 100,000 characters long
+- chat history persistence
+- Multiple device support
+
+#### High-level design
+
+Use basic client-server architecture:
+
+- Server
+  - receives messages
+  - relays messages to the intended recipients
+  - store if not online
+
+##### choice of network protocols
+
+1. Sender side
+
+Uses HTTP to initially send messages to the server.
+- use keep-alive header
+  - maintain a persistent connection
+  - reduces the number of TCP handshakes
+
+2. Receiver side
+
+- Polling: Client periodically asks the server if there are any new messages.
+  - costly
+  - consume server resources and bandwidth
+- Long polling: a client holds the connection open until there are actually new messages available or a timeout threshold has been reached
+  - Sender and receiver may not connect to the same chat server. HTTP based servers are usually stateless. If you use round robin for load balancing, the server that receives the message might not have a long-polling connection with the client who receives the message.
+  - A server has no good way to tell if a client is disconnected.
+  - It is inefficient. If a user does not chat much, long polling still makes periodic connections after timeouts
+  - WebSocket: bi-directional and persistent, port 80 or 443
+    - starts its life as a HTTP connection and could be “upgraded” via some well-defined handshake to a WebSocket connection
+    - ![websocket](/assets/img/ws.png)
+
+##### General Design
+
+Note: everything else does not have to be WebSocket (sign up, login, user profile, etc)
+
+![general_design_for_chat](/assets/img/chat_design.png)
+
+
+
+
+
+
+
+
+
+
+
+
