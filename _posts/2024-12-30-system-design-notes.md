@@ -79,6 +79,19 @@ From *System Design Interview* by Alex Xu
     - [Service discovery](#service-discovery)
     - [Message flows](#message-flows)
     - [Message synchronization across multiple devices](#message-synchronization-across-multiple-devices)
+    - [small group chat flow](#small-group-chat-flow)
+    - [Online presence](#online-presence)
+- [SEARCH AUTOCOMPLETE SYSTEM](#search-autocomplete-system)
+  - [Basic Requirements](#basic-requirements)
+  - [High-level design](#high-level-design-3)
+  - [Deep Dive](#deep-dive-1)
+    - [Trie / prefix tree](#trie--prefix-tree)
+    - [Data gathering](#data-gathering)
+    - [Query Service](#query-service)
+    - [Trie Operation](#trie-operation)
+    - [Scale the storage](#scale-the-storage)
+  - [Further questions:](#further-questions)
+- [DESIGN YOUTUBE](#design-youtube)
 
 
 ### K-V Store
@@ -643,4 +656,145 @@ recommend the best chat server for a client
 
 ##### Message synchronization across multiple devices
 
+each device keeps track of the last message ID it has received
 
+fetch messages with IDs greater than the last message ID from KV store through chat server
+
+##### small group chat flow
+
+![small_group](/assets/img/small_group.png)
+![small_group_r](/assets/img/receiver.png)
+
+1. message from User A is copied to each group member’s message sync queue
+   - simplifies message sync flow as each client only needs to check its own inbox
+   - group number is small, storing a copy in each recipient’s inbox is not too expensive
+   - for groups with a lot of users, storing a message copy for each member is not acceptable
+2. Each recipient has an inbox (message sync queue) which contains messages from different senders.
+
+##### Online presence
+
+presence server: managing online status and communicating with clients through WebSocket
+
+![log_in](/assets/img/log_in.png)
+![log_out](/assets/img/log_out.png)
+
+- User login
+  - After a WebSocket connection is built between the client and the real-time service
+  - save online status and timestamp
+- User logout
+- User disconnection
+  - Updating online status on every disconnect/reconnect would make the presence indicator change too often because of the unstable network connection
+  - use heartbeat instead: from client to server
+  - alike low-pass filter
+- Online status fanout
+  - publish-subscribe model
+  - ![fanout](/assets/img/presence_fanout.png)
+  - The communication between clients and servers is through real-time WebSocket
+
+### SEARCH AUTOCOMPLETE SYSTEM
+
+search autocomplete system / design top k / design top k most searched queries
+
+#### Basic Requirements
+
+- matching only supported at the beginning of the query
+- 5 suggestions determined by popularity
+- no spell check or correction
+- suppose all queries are lowercase alphabetic characters 
+- 10 million DAU
+- Fast response time
+- relevant results
+- Scalable: handle high traffic
+
+#### High-level design
+
+- Data gethering: gathers user input queries and aggregates them in real-time ( not pratical for large data set )
+- Query Service: Given a search query or prefix, return 5 most frequently searched terms
+
+#### Deep Dive
+
+##### Trie / prefix tree
+
+check the detailed explanation if not familiar with Trie
+
+leetcode: 208 Implement Trie (Prefix Tree)
+
+- a trie example with frequency count in leaf nodes:
+  ![Trie](/assets/img/trie.png)
+
+time complecity for get top k most frequent queries:
+`O(p) + O(c) + O(clogc)`
+- `O(p)`: find the prefix
+- `O(c)`: c is the number of children of the prefix node, Traverse the subtree from the prefix node to get all valid children
+- `O(c * log(c))`: sort the children and get top k
+
+![trie](/assets/img/trie_search.png)
+
+- Step 1: Find the prefix node “tr”.
+- Step 2: Traverse the subtree to get all valid children. In this case, nodes [tree: 10], [true: 35], [try: 29] are valid.
+- Step 3: Sort the children and get top 2. [true: 35] and [try: 29] are the top 2 queries with prefix “tr”.
+
+problem: worst-scenario need to traverse the whole tree
+
+optimization:
+  - Limit the max length of a prefix
+  - cache top search queries at each node
+    - each node keeps track of the top k most frequent queries
+    - example: ![trie_cache](/assets/img/trie_cache.png)  
+    - time complexity: `O(1)`
+
+##### Data gathering
+
+realtime data gathering is not pratical 
+- Users may enter billions of queries per day. Updating the trie on every query significantly slows down the query service.
+- Top suggestions may not change much once the trie is built.
+
+![data_gathering](/assets/img/data_gathering.png)
+- Analytics Logs: stores raw data about search queries, append-only, not indexed
+- Aggregators: aggregate search queries on the demand of real-time
+- Aggregated data: queries with frequency count and timestamp
+- Workers: build the trie data structure and store it in Trie DB asynchronously
+- Trie Cache: distributed cache system that keeps trie in memory for fast read, takes weekly snapshots of Trie DB
+- Trie DB: persistent storage for trie
+  - Document store: store the serialized snapshots of the trie periodically into database like MongoDB
+  - KV store: transform the trie into a hash table form: ![transit](/assets/img/transit.png)
+
+##### Query Service
+
+![query](/assets/img/query_trie.png)
+- use ajax to send request that won't refresh the page
+- use browser cache to store autocomplete suggestions (with cache-control header: max-age, private) 
+- data sampling: only sample a small percentage of queries
+
+##### Trie Operation
+
+- Update: 
+  - Update the trie weekly. Replace the old trie with the new one.
+  - Update individual trie node directly. only do this when trie is relatively small. also don't forget to update all the ancestors
+
+- Delete:
+  - add a filter layer in front of the Trie Cache to filter out unwanted suggestions.
+  - Unwanted suggestions are removed physically from the database asynchronically so the correct data set will be used to build trie in the next update cycle.
+  ![filter](/assets/img/filter.png)
+
+
+##### Scale the storage
+
+Sharding problem: uneven distribution of words
+
+- use a shard map manager to manage the shards: use a lookup database for storing trie
+
+![shard](/assets/img/shard.png)
+
+#### Further questions:
+
+- multiple languages
+  - use unicode characters
+- different search queries across regions
+  - build different tries and store in CDNs for response time
+- real-time search queries
+  - Reduce the working data set by sharding
+  - Change the ranking model and assign more weight to recent search queries
+  - Stream processing data
+
+### DESIGN YOUTUBE
