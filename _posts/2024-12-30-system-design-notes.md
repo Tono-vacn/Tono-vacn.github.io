@@ -91,7 +91,19 @@ From *System Design Interview* by Alex Xu
     - [Trie Operation](#trie-operation)
     - [Scale the storage](#scale-the-storage)
   - [Further questions:](#further-questions)
-- [DESIGN YOUTUBE](#design-youtube)
+- [DESIGN YOUTUBE / video sharing platform](#design-youtube--video-sharing-platform)
+  - [Basic Requirements](#basic-requirements-1)
+  - [High-level design](#high-level-design-4)
+  - [Design deep dive](#design-deep-dive)
+    - [Video transcoding](#video-transcoding)
+    - [Video transcoding architecture](#video-transcoding-architecture)
+  - [Optimization](#optimization)
+    - [Speed optimization:](#speed-optimization)
+    - [Safety optimization](#safety-optimization)
+    - [Cost-saving optimization](#cost-saving-optimization)
+  - [Error handling](#error-handling)
+- [DESIGN GOOGLE DRIVE](#design-google-drive)
+  - [Basic Requirements](#basic-requirements-2)
 
 
 ### K-V Store
@@ -797,4 +809,139 @@ Sharding problem: uneven distribution of words
   - Change the ranking model and assign more weight to recent search queries
   - Stream processing data
 
-### DESIGN YOUTUBE
+### DESIGN YOUTUBE / video sharing platform
+
+#### Basic Requirements
+
+- users can upload videos and watch videos
+- 5 million DAU
+- average daily spent time: 30 minutes
+- international user support
+- accepts most of video resolutions and formats
+- encryption required
+- maximum video size: 1 GB
+- utilize existing cloud service
+
+- Ability to upload videos fast
+- Smooth video streaming
+- Ability to change video quality
+- Low infrastructure cost
+- High availability, scalability, and reliability requirements
+- Clients supported: mobile apps, web browser, and smart TV
+
+#### High-level design
+
+- ![basic_design](/assets/img/youtube.png)
+- video uploading flow
+  ![upload_flow](/assets/img/upload_flow.png)
+  - Metadata DB: Video metadata are stored in Metadata DB.
+  - Metadata cache: For better performance, video metadata and user objects are cached
+  - Original storage: A blob storage system is used to store original videos.
+  - Transcoding servers: converting a video format to other formats (MPEG, HLS, etc), which provide the best video streams possible.
+  - Transcoded storage: It is a blob storage that stores transcoded video files
+  - CDN: Videos are cached in CDN.
+  - Completion queue: MQ that stores information about video transcoding completion events
+
+  1. flow for upload actual video
+  - ![upload_video](/assets/img/upload_video.png)
+  - API servers inform the client that the video is successfully uploaded and is ready for streaming
+  2. update metadata
+  - ![update_metadata](/assets/img/update_metadata.png)
+- Video streaming flow
+  - streaming protocols
+    - MPEG–DASH: Dynamic Adaptive Streaming over HTTP, Moving Picture Experts Group
+    - Apple HLS. HLS stands for “HTTP Live Streaming”
+    - Microsoft Smooth Streaming.
+    - Adobe HTTP Dynamic Streaming (HDS).
+  - Videos are streamed from CDN directly
+
+#### Design deep dive
+##### Video transcoding
+- container: like a basket that contains the video file, audio, and metadata.
+- codec: an algorithm that compresses and decompresses video and audio data, like H.264, VP9, etc.
+- DAG model: ![video_trans](/assets/img/video_trans.png)
+##### Video transcoding architecture
+
+![video_trans_arch](/assets/img/video_trans_arch.png)
+- preprocessor: 
+  - Video splitting: Video stream is split or further split into smaller Group of Pictures (GOP) alignment. GOP is a group/chunk of frames arranged in a specific order. Each chunk is an independently playable unit, usually a few seconds in length.
+  - Some old mobile devices or browsers might not support video splitting. Preprocessor should ensure GOP alignment for old clients.
+  - DAG generation, processor generates DAG based on configuration files client programmers write. 
+  - cache data: preprocessor is a cache for segmented videos, preprocessor stores GOPs and metadata in temporary storage. If video encoding fails, the system could use persisted data for retry operations.
+- DAG Scheduler:
+  - DAG scheduler splits a DAG graph into stages of tasks and puts them in the task queue in the resource manager
+- resource manager：
+  ![resource_manager](/assets/img/resource_manager.png)
+  - Task queue: a priority queue contains tasks to be executed.
+  - Worker queue: a priority queue that contains worker utilization info.
+  - Running queue: It contains info about the currently running tasks and workers running the tasks
+  - Task scheduler: It picks the optimal task/worker, and instructs the chosen task worker to execute the job
+  - The resource manager works as follows:
+    - The task scheduler gets the highest priority task from the task queue.
+    - The task scheduler gets the optimal task worker to run the task from the worker queue.
+    - The task scheduler instructs the chosen task worker to run the task.
+    - The task scheduler binds the task/worker info and puts it in the running queue.
+    - The task scheduler removes the job from the running queue once the job is done.
+- Task workers
+  - ![task_worker](/assets/img/task_worker.png)
+  - Task workers run the tasks which are defined in the DAG
+- Temporary Storage
+  - Data in temporary storage is freed up once the corresponding video processing is complete.
+
+#### Optimization
+##### Speed optimization: 
+
+1. parallelize video uploading
+
+  ![multiple_upload](/assets/img/multiple_upload.png)
+  - split a video into smaller chunks by GOP alignment
+  - allows fast resumable uploads when the previous upload failed
+  - speed up the upload process by uploading multiple chunks in parallel
+
+2. place upload centers close to users
+
+  - setting up multiple upload centers across the globe
+
+3. parallelism everywhere
+   - make the system more loosely coupled: introduce message queues
+     ![message_q](/assets/img/message_q.png)
+   - parallelization for each step in the whole process
+
+##### Safety optimization
+
+1. use pre-signed URLs (this name is from AWS S3)
+   ![pre-signed](/assets/img/pre-signed.png)
+   - pre-signed URL gives the access permission to the object identified in the URL
+2. protect videos copyright
+   - DRM (Digital Rights Management): Apple FairPlay, Google Widevine, Microsoft PlayReady
+   - AES encryption: encrypt a video and configure an authorization policy. The encrypted video will be decrypted upon playback.
+   - Visual watermarking
+
+##### Cost-saving optimization
+
+1. Only serve the most popular videos from CDN and other videos from our high capacity storage video servers
+2. For less popular content, we may not need to store many encoded video versions. Short videos can be encoded on-demand.
+3. Some videos are popular only in certain regions. There is no need to distribute these videos to other regions.
+4. Build your own CDN like Netflix and partner with Internet Service Providers (ISPs).
+
+#### Error handling
+
+- Recoverable error: retry the operation a few times, If the task continues to fail and the system believes it is not recoverable, it returns a proper error code to the client.
+- Non-recoverable error: stops the running tasks associated with the video and returns the proper error code to the client
+
+### DESIGN GOOGLE DRIVE
+
+#### Basic Requirements
+
+- Add files. The easiest way to add a file is to drag and drop a file into Google drive.
+- Download files.
+- Sync files across multiple devices. When a file is added to one device, it is automatically synced to other devices.
+- See file revisions.
+- Share files with your friends, family, and coworkers
+- Send a notification when a file is edited, deleted, or shared with you.
+
+- Reliability. Reliability is extremely important for a storage system. Data loss is unacceptable.
+- Fast sync speed. If file sync takes too much time, users will become impatient and abandon the product.
+- Bandwidth usage. If a product takes a lot of unnecessary network bandwidth, users will be unhappy, especially when they are on a mobile data plan.
+- Scalability. The system should be able to handle high volumes of traffic.
+- High availability. Users should still be able to use the system when some servers are offline, slowed down, or have unexpected network errors.
