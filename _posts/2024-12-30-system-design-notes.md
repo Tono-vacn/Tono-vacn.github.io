@@ -104,6 +104,18 @@ From *System Design Interview* by Alex Xu
   - [Error handling](#error-handling)
 - [DESIGN GOOGLE DRIVE](#design-google-drive)
   - [Basic Requirements](#basic-requirements-2)
+  - [Basic Design](#basic-design)
+    - [Sync Conflict](#sync-conflict)
+  - [High-level design](#high-level-design-5)
+  - [Detailed Design](#detailed-design)
+    - [Block servers](#block-servers)
+    - [Consistency requirements (metadata db)](#consistency-requirements-metadata-db)
+    - [Possible Metadata DB schema](#possible-metadata-db-schema)
+    - [upload flow](#upload-flow)
+    - [Download flow](#download-flow)
+    - [Notification service](#notification-service)
+    - [Save storage space](#save-storage-space)
+  - [Failure handling](#failure-handling)
 
 
 ### K-V Store
@@ -945,3 +957,97 @@ Sharding problem: uneven distribution of words
 - Bandwidth usage. If a product takes a lot of unnecessary network bandwidth, users will be unhappy, especially when they are on a mobile data plan.
 - Scalability. The system should be able to handle high volumes of traffic.
 - High availability. Users should still be able to use the system when some servers are offline, slowed down, or have unexpected network errors.
+
+#### Basic Design
+
+![basic_structure](/assets/img/basic_structure_drive.png)
+- file storage: AWS S3, files are replicated in two separate geographical regions
+
+##### Sync Conflict
+
+- Two users edit the same file at the same time
+- Solution:
+  - the first version that gets processed wins
+  - the version that gets processed later receives a conflict
+  - system presents both copies of the same file: user 2’s local copy and the latest version from the server. User 2 has the option to merge both files or override one version with the other.
+
+#### High-level design
+
+![high_level](/assets/img/high-level.png)
+
+#### Detailed Design
+
+##### Block servers
+
+![block_server](/assets/img/block_server.png)
+
+- A file is split into smaller blocks.
+- Each block is compressed using compression algorithms.
+- To ensure security, each block is encrypted before it is sent to cloud storage.
+- Blocks are uploaded to the cloud storage.
+
+Block servers are used to minimize the amount of network traffic being transmitted, especially in following situations:
+- Delta sync. When a file is modified, only modified blocks are synced instead of the whole file using a sync algorithm.
+  - ![delta sync](/assets/img/delta_sync.png)
+- Compression. Applying compression on blocks can significantly reduce the data size. Like gzip and bzip2 are used to compress text files.
+
+
+##### Consistency requirements (metadata db)
+
+Memory caches adopt an eventual consistency model by default, which means different replicas might have different data.
+
+To achieve strong consistency, we must ensure the following:
+- Data in cache replicas and the master is consistent.
+- Invalidate caches on database write to ensure cache and database hold the same value.
+
+Achieving strong consistency in a relational database is easy because it maintains the ACID (Atomicity, Consistency, Isolation, Durability) properties. However, NoSQL databases do not support ACID properties by default. ACID properties must be programmatically incorporated in synchronization logic. In our design, we choose relational databases because the ACID is natively supported.
+
+
+##### Possible Metadata DB schema
+
+![metadataDB](/assets/img/metadata_db.png)
+
+##### upload flow
+
+![upload_flow](/assets/img/upload_flow_file.png)
+
+edit flow is alike
+
+##### Download flow
+
+Download flow is triggered when a file is added or edited elsewhere.
+
+Two ways a client can know a file is added or edited by another client:
+- Notification system: If client is online
+- If client A is offline while a file is changed by another client, data will be saved to the cache. When the offline client is online again, it pulls the latest changes.
+
+![download_flow](/assets/img/download_flow_file.png)
+
+##### Notification service
+
+purpose: maintain file consistency, any mutation of a file performed locally needs to be informed to other clients to reduce conflicts
+
+- Long polling: better choice
+  - Communication for notification service is not bi-directional
+  - WebSocket is suited for real-time bi-directional communication such as a chat app. For Google Drive, notifications are sent infrequently with no burst of data
+- WebSocket
+
+##### Save storage space
+
+- De-duplicate data blocks. Eliminating redundant blocks at the account level is an easy way to save space. Two blocks are identical if they have the same hash value.
+- Adopt an intelligent data backup strategy
+  - Set a limit for maximum file versions: If the limit is reached, the oldest version will be replaced with the new version.
+  - Keep valuable versions only: To avoid unnecessary copies, we could limit the number of saved versions. We give more weight to recent versions.
+- Moving infrequently used data to cold storage. (which is cheaper, like AWS Glacier)
+
+#### Failure handling
+
+- Load balancer failure: If a load balancer fails, the secondary would become active and pick up the traffic. Load balancers usually monitor each other using a heartbeat, a periodic signal sent between load balancers. A load balancer is considered as failed if it has not sent a heartbeat for some time.
+- Block server failure: If a block server fails, other servers pick up unfinished or pending jobs.
+- Cloud storage failure: S3 buckets are replicated multiple times in different regions. If files are not available in one region, they can be fetched from different regions.
+- API server failure: It is a stateless service. If an API server fails, the traffic is redirected to other API servers by a load balancer.
+- Metadata cache failure: Metadata cache servers are replicated multiple times. If one node goes down, you can still access other nodes to fetch data. We will bring up a new cache server to replace the failed one.
+- Metadata DB failure.
+  - Master down: If the master is down, promote one of the slaves to act as a new master and bring up a new slave node.
+  - Slave down: If a slave is down, you can use another slave for read operations and bring another database server to replace the failed one.
+- Offline backup queue failure: Queues are replicated multiple times. If one queue fails, consumers of the queue may need to re-subscribe to the backup queue.
