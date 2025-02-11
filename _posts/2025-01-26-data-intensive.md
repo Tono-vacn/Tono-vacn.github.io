@@ -18,6 +18,55 @@ A simple note for data-intensive applications.
 
 From *Designing Data-Intensive Applications* by Martin Kleppmann
 
+- [Data Replication](#data-replication)
+  - [leader-based replication:](#leader-based-replication)
+    - [leader-based replication implementation](#leader-based-replication-implementation)
+    - [Problems with *Replication Lag*](#problems-with-replication-lag)
+  - [Multi-Leader Replication](#multi-leader-replication)
+    - [Use Cases for Multi-Leader Replication](#use-cases-for-multi-leader-replication)
+    - [Handling Write Conflicts](#handling-write-conflicts)
+      - [Conflict avoidance](#conflict-avoidance)
+      - [Converging toward a consistent state](#converging-toward-a-consistent-state)
+      - [Custom conflict resolution logic](#custom-conflict-resolution-logic)
+      - [Automatic Conflict Resolution](#automatic-conflict-resolution)
+    - [Multi-Leader Replication Topologies](#multi-leader-replication-topologies)
+  - [Leaderless Replication](#leaderless-replication)
+    - [Writing to the Database When a Node Is Down](#writing-to-the-database-when-a-node-is-down)
+      - [Read repair and anti-entropy](#read-repair-and-anti-entropy)
+      - [Quorums for reading and writing](#quorums-for-reading-and-writing)
+    - [Limitations of Quorum Consistency](#limitations-of-quorum-consistency)
+    - [Sloppy Quorums and Hinted Handoff](#sloppy-quorums-and-hinted-handoff)
+    - [Detecting Concurrent Writes](#detecting-concurrent-writes)
+- [Partitioning / Sharding](#partitioning--sharding)
+  - [Partitioning of Key-Value Data](#partitioning-of-key-value-data)
+    - [Partitioning by Key Range](#partitioning-by-key-range)
+    - [Partitioning by Hash of Key](#partitioning-by-hash-of-key)
+    - [Skewed Workloads and Relieving Hot Spots](#skewed-workloads-and-relieving-hot-spots)
+  - [Partitioning and Secondary Indexes](#partitioning-and-secondary-indexes)
+    - [Partitioning Secondary Indexes by Document](#partitioning-secondary-indexes-by-document)
+    - [Partitioning Secondary Indexes by Term](#partitioning-secondary-indexes-by-term)
+  - [Rebalancing Partitions](#rebalancing-partitions)
+    - [Strategies for Rebalancing](#strategies-for-rebalancing)
+      - [Fixed number of partitions](#fixed-number-of-partitions)
+      - [Dynamic partitioning](#dynamic-partitioning)
+      - [Partitioning proportionally to nodes](#partitioning-proportionally-to-nodes)
+    - [Automatic or Manual Rebalancing](#automatic-or-manual-rebalancing)
+  - [Request Routing](#request-routing)
+- [transaction](#transaction)
+  - [ACID](#acid)
+    - [Atomicity](#atomicity)
+    - [Consistency](#consistency)
+    - [Isolation](#isolation)
+    - [Durability](#durability)
+  - [Single-Object and Multi-Object Operations](#single-object-and-multi-object-operations)
+    - [Single-object writes](#single-object-writes)
+    - [The need for multi-object transactions](#the-need-for-multi-object-transactions)
+    - [Handling errors and aborts](#handling-errors-and-aborts)
+  - [Weak Isolation Levels](#weak-isolation-levels)
+    - [Read Committed](#read-committed)
+    - [Snapshot Isolation and Repeatable Read](#snapshot-isolation-and-repeatable-read)
+
+
 ## Data Replication
 
 *single-leader*, *multi-leader*, and *leaderless* replication
@@ -265,18 +314,249 @@ If each node simply overwrote the value for a key whenever it received a write r
   - The collection of version numbers from all the replicas is called a version vector.
   - The version vector structure ensures that it is safe to read from one replica and subsequently write back to another replica.
 
+## Partitioning / Sharding
+
+### Partitioning of Key-Value Data
+
+skewed: If the partitioning is unfair, so that some partitions have more data or queries than others
+
+hot spot: A partition with disproportionately high load
+
+#### Partitioning by Key Range
+
+One way of partitioning is to assign a continuous range of keys (from some minimum to some maximum) to each partition
+
+downside of key range partitioning:
+- certain access patterns can lead to hot spots.
+
+#### Partitioning by Hash of Key
+
+A good hash function takes skewed data and makes it uniformly distributed.
+
+- This technique is good at distributing keys fairly among the partitions. The partition boundaries can be evenly spaced, or they can be chosen pseudorandomly (in which case the technique is sometimes known as **consistent hashing**).
+
+- by using the hash of the key for partitioning we lose a nice property of key-range partitioning: the ability to do efficient range queries.
+
+- A table in Cassandra can be declared with a compound primary key consisting of
+several columns. Only the first part of that key is hashed to determine the partition,
+but the other columns are used as a concatenated index for sorting the data in Cassandra’s SSTables. A query therefore cannot search for a range of values within the
+first column of a compound key, but if it specifies a fixed value for the first column, it can perform an efficient range scan over the other columns of the key.
+  - primary key for updates is chosen to be (user_id, update_timestamp), then you can efficiently retrieve all updates made by a particular user within some time interval, sorted by timestamp.
+
+#### Skewed Workloads and Relieving Hot Spots
+
+extreme case: where all reads and writes are for the same key
+
+Solution:
+  - a simple technique is to add a random number to the beginning or end of the key. Just a two-digit decimal random number would split the writes to the key evenly across 100 different keys, allowing those keys to be distributed to different partitions.
+  - having split the writes across different keys, any reads now have to do additional work, as they have to read the data from all 100 keys and combine it. 
+
+### Partitioning and Secondary Indexes
+
+document-based partitioning and term-based partitioning
+
+#### Partitioning Secondary Indexes by Document
+
+![index_by_document](/assets/img/index_by_doc.png)
+
+also known as *local index*
+-  each partition is completely separate: each partition maintains its own secondary indexes, covering only the documents in that partition.
+-  doesn’t care what data is stored in other partitions
+-  need to send the query to all partitions, and combine all the results you get back.
+
+also known as scatter/ gather
+
+#### Partitioning Secondary Indexes by Term
+
+also known as *global index*
+
+![index_by_term](/assets/img/index_by_term.png)
+
+We call this kind of index term-partitioned, because the term we’re looking for determines the partition of the index.
+- The advantage of a global (term-partitioned) index over a document-partitioned index is that it can make reads more efficient: rather than doing scatter/gather over all partitions, a client only needs to make a request to the partition containing the term that it wants.
+- downside of a global index is that writes are slower and more complicated, because a write to a single document may now affect multiple partitions of the index
+- In practice, updates to global secondary indexes are often asynchronous
+
+### Rebalancing Partitions
+
+The process of moving load from one node in the cluster to another is called rebalancing.
+- After rebalancing, the load (data storage, read and write requests) should be shared fairly between the nodes in the cluster.
+- While rebalancing is happening, the database should continue accepting reads and writes.
+- No more data than necessary should be moved between nodes, to make rebalancing fast and to minimize the network and disk I/O load.
+
+#### Strategies for Rebalancing
+
+- why not using mod:
+  - The problem with the mod N approach is that if the number of nodes N changes, most of the keys will need to be moved from one node to another. 
+  - Such frequent moves make rebalancing excessively expensive.
+
+##### Fixed number of partitions
+
+- create many more partitions than there are nodes
+- assign several partitions to each node.
+- if a node is added to the cluster, the new node can steal a few partitions from every existing node until partitions are fairly distributed once again.
+
+- Only entire partitions are moved between nodes.
+- The number of partitions does not change
+- nor does the assignment of keys to partitions
+- The only thing that changes is the assignment of partitions to nodes.
+
+When using this startegy:
+- the number of partitions is usually fixed when the database is first set up and not changed afterward
+- the number of partitions configured at the outset is the maximum number of nodes you can have, so you need to choose it high enough to accommodate future growth.
+
+##### Dynamic partitioning
+
+This means:
+- When a partition grows to exceed a configured size (on HBase, the default is 10 GB), it is split into two partitions so that approximately half of the data ends up on each side of the split
+- if lots of data is deleted and a partition shrinks below some threshold, it can be merged with an adjacent partition.
+- Each partition is assigned to one node, and each node can handle multiple partitions, like in the case of a fixed number of partitions
+- In the case of HBase, the transfer of partition files happens through HDFS, the underlying distributed filesystem.
 
 
+advantages:
+- the number of partitions adapts to the total data volume.
+
+caveat:
+- there is no a priori information about where to draw the partition boundaries. While the dataset is small—until it hits the point at which the first partition is split—all writes have to be processed by a single node while the other nodes sit idle. 
+
+##### Partitioning proportionally to nodes
+
+- make the number of partitions proportional to the number of nodes—in other words, to have a fixed number of partitions per node
+- the size of each partition grows proportionally to the dataset size while the number of nodes remains unchanged
+- increase the number of nodes, the partitions become smaller again.
+- When a new node joins the cluster, it randomly chooses a fixed number of existing partitions to split, and then takes ownership of one half of each of those split partitions while leaving the other half of each partition in place.
+- Picking partition boundaries randomly requires that hash-based partitioning is used (so the boundaries can be picked from the range of numbers produced by the hash function).
+
+#### Automatic or Manual Rebalancing
+
+- fully automatic rebalancing: the system decides automatically when to move partitions from one node to another, without any administrator interaction
+- fully manual: the assignment of partitions to nodes is explicitly configured by an administrator, and only changes when the administrator explicitly reconfigures it
+- something in between: system generate a suggested partition assignment automatically, but require an administrator to commit it before it takes effect
+
+### Request Routing
+
+*service discovery*
+
+possible solutions for service discovery:
+
+![possible_solution](/assets/img/request_routing.png)
+
+1. Allow clients to contact any node (e.g., via a round-robin load balancer). If that node coincidentally owns the partition to which the request applies, it can handle the request directly; otherwise, it forwards the request to the appropriate node, receives the reply, and passes the reply along to the client.
+2. Send all requests from clients to a routing tier first, which determines the node that should handle each request and forwards it accordingly. This routing tier does not itself handle any requests; it only acts as a partition-aware load balancer.
+3. Require that clients be aware of the partitioning and the assignment of partitions to nodes. In this case, a client can connect directly to the appropriate node, without any intermediary.
+
+key problem: how does the component making the routing decision (which may be one of the nodes, or the routing tier, or the client) learn about changes in the assignment of partitions to nodes
+- rely on a separate coordination service such as ZooKeeper to keep track of this cluster metadata
+- Cassandra and Riak take a different approach: they use a gossip protocol among the nodes to disseminate any changes in cluster state. 
+  - Requests can be sent to any node, and that node forwards them to the appropriate node for the requested partition.
 
 
+## transaction
 
+*safety guarantees*:  Transactions are not a law of nature; they were created with a purpose, namely to simplify the programming model for applications accessing a database. By using transactions, the application is free to ignore certain potential error scenarios and concurrency issues, because the database takes care of them instead.
 
+### ACID
 
+*Atomicity, Consistency, Isolation, and Durability*
 
+BASE: *Basically Available, Soft state, and Eventual consistency*
 
+#### Atomicity
 
+In multi-threaded programming: 
+- if one thread executes an atomic operation, that means there is no way that another thread could see the half-finished result of the operation.
 
+In the context of ACID:
+- something that cannot be broken down into smaller parts.
+- describes what happens if a client wants to make several writes, but a fault occurs after some of the writes have been processed
+- The ability to abort a transaction on error and have all writes from that transaction discarded is the defining feature of ACID atomicity.
 
+#### Consistency
 
+consistency (in the ACID sense) is **a property of the application**. The application may rely on the database’s atomicity and isolation properties in order to achieve consistency, but it’s not up to the database alone. 
+
+The idea of ACID consistency is that you have certain statements about your data (invariants) that must always be true.
+
+If a transaction starts with a database that is valid according to these invariants, and any writes during the transaction preserve the validity, then you can be sure that the invariants are always satisfied.
+
+this idea of consistency depends on the application’s notion of invariants, and it’s the application’s responsibility to define its transactions correctly so that they preserve consistency. 
+
+#### Isolation
+
+Isolation in the sense of ACID means that concurrently executing transactions are isolated from each other: they cannot step on each other’s toes.
+
+- Concurrently running transactions shouldn’t interfere with each other.
+- classic database textbooks formalize isolation as **serializability**, which means that each transaction can pretend that it is the only transaction running on the entire database.
+- The database ensures that when the transactions have committed, the result is the same as if they had run **serially** (one after another), even though in reality they may have run concurrently.
+- However, in practice, **serializable isolation** is rarely used, because it carries a performance penalty.
+
+More details will be discussed in *Weak Isolation Levels*
+
+#### Durability
+
+Durability is the promise that once a transaction has committed successfully, any data it has written will not be forgotten, even if there is a hardware fault or the database crashes.
+
+### Single-Object and Multi-Object Operations
+
+These definitions (Atomic and Isolation) assume that you want to modify several objects (rows, documents, records) at once. Such multi-object transactions are often needed if several pieces of data need to be kept in sync.
+
+A transaction is usually understood as a mechanism for grouping multiple operations on multiple objects into one unit of execution.
+
+#### Single-object writes
+
+single-object operations:
+- prevent lost updates when several clients try to write to the same object concurrently
+- not transactions in the usual sense of the word
+
+examples:
+- storage engines almost universally aim to provide atomicity and isolation on the level of a single object (such as a key- value pair) on one node:
+  - Atomicity can be implemented using a log for crash recovery
+  - isolation can be implemented using a lock on each object (allowing only one thread to access an object at any one time)
+- atomic operations:
+  - increment operation
+  - compare-and-set
+
+#### The need for multi-object transactions
+
+- In a relational data model, a row in one table often has a foreign key reference to a row in another table. (Similarly, in a graph-like data model, a vertex has edges to other vertices.) Multi-object transactions allow you to ensure that these references remain valid: when inserting several records that refer to one another, the foreign keys have to be correct and up to date, or the data becomes nonsensical.
+- In a document data model, the fields that need to be updated together are often within the same document, which is treated as a single object—no multi-object transactions are needed when updating a single document. However, document databases lacking join functionality also encourage denormalization (see “Relational Versus Document Databases Today” on page 38). When denormalized information needs to be updated, like in the example of Figure 7-2, you need to update several documents in one go. Transactions are very useful in this situation to prevent denormalized data from going out of sync.
+- In databases with secondary indexes (almost everything except pure key-value stores), the indexes also need to be updated every time you change a value. These indexes are different database objects from a transaction point of view: for example, without transaction isolation, it’s possible for a record to appear in one index but not another, because the update to the second index hasn’t happened yet.
+#### Handling errors and aborts
+
+### Weak Isolation Levels
+
+*serializable isolation*: 
+- database guarantees that transactions have the same effect as if they ran serially (i.e., one at a time, without any concurrency).
+- has a performance cost
+
+#### Read Committed
+
+The most basic level of transaction isolation
+1. When reading from the database, you will only see data that has been committed (no dirty reads).
+2. When writing to the database, you will only overwrite data that has been committed (no dirty writes).
+
+- No dirty reads:
+  - dirty reads: a transaction has written some data to the database, but the transaction has not yet committed or aborted, and another transaction can see that uncommitted data
+  - any writes by a transaction only become visible to others when that transaction commits (and then all of its writes become visible at once).
+  - possible needed situation:
+    - transaction needs to update several objects
+    - transaction aborts, any writes it has made need to be rolled back
+- No dirty writes:
+  - dirty writes: the earlier write is part of a transaction that has not yet committed, and the later write overwrites an uncommitted value
+  - Transactions running at the read committed isolation level must prevent dirty writes, usually by delaying the second write until the first write’s transaction has committed or aborted.
+
+Implementation of read committed:
+
+- prevent dirty writes by using row-level locks
+  - when a transaction wants to modify a particular object (row or document), it must first acquire a lock on that object.
+  - It must then hold that lock until the transaction is committed or aborted
+
+- prevent dirty reads:
+  - for every object that is written, the database remembers both the old committed value and the new value set by the transaction that currently holds the write lock.
+  - While the transaction is ongoing, any other transactions that read the object are simply given the old value. 
+  - Only when the new value is committed do transactions switch over to reading the new value.
+
+#### Snapshot Isolation and Repeatable Read
 
 
