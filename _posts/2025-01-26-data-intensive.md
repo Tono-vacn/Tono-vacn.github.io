@@ -65,6 +65,18 @@ From *Designing Data-Intensive Applications* by Martin Kleppmann
   - [Weak Isolation Levels](#weak-isolation-levels)
     - [Read Committed](#read-committed)
     - [Snapshot Isolation and Repeatable Read](#snapshot-isolation-and-repeatable-read)
+      - [Visibility rules for observing a consistent snapshot](#visibility-rules-for-observing-a-consistent-snapshot)
+      - [snapshot isolation and Indexes](#snapshot-isolation-and-indexes)
+      - [Repeatable read and naming confusion](#repeatable-read-and-naming-confusion)
+    - [Preventing Lost Updates](#preventing-lost-updates)
+      - [Atomic write operations](#atomic-write-operations)
+      - [Explicit locking](#explicit-locking)
+      - [Automatically detecting lost updates](#automatically-detecting-lost-updates)
+      - [Compare-and-set](#compare-and-set)
+      - [Conflict resolution and replication](#conflict-resolution-and-replication)
+    - [Write Skew and Phantoms](#write-skew-and-phantoms)
+      - [Phantoms causing write skew](#phantoms-causing-write-skew)
+      - [Solution: Materializing conflicts](#solution-materializing-conflicts)
 
 
 ## Data Replication
@@ -559,4 +571,139 @@ Implementation of read committed:
 
 #### Snapshot Isolation and Repeatable Read
 
+*nonrepeatable read / read skew*:
+- nonrepeatable read: A transaction reads a value, and then another transaction modifies that value and commits. If the first transaction reads the value again, it will see a different value.
 
+common solution:
+- Snapshot isolation is the most common solution to this problem.
+- The idea is that each transaction reads from a consistent snapshot of the database—that is, the transaction sees all the data that was committed in the database at the start of the transaction. 
+
+Implementation:
+- Like read committed isolation, implementations of snapshot isolation typically use write locks to prevent dirty writes
+- However, reads do not require any locks. *readers never block writers, and writers never block readers*.
+- **MVCC**: The database must potentially keep several different committed versions of an object, because various in-progress transactions may need to see the state of the database at different points in time. Because it maintains several versions of an object side by side
+
+Read-Committed Isolation and Snapshot Isolation:
+- If a database only needed to provide read committed isolation, but not snapshot isolation, it would be sufficient to keep two versions of an object: the committed version and the overwritten-but-not-yet-committed version. However, storage engines that support snapshot isolation typically use MVCC for their read committed isolation level as well.
+- A typical approach is that read committed uses a separate snapshot for each query, while snapshot isolation uses the same snapshot for an entire transaction.
+
+How MVCC-based snapshot isolation is implemented in PostgreSQL
+- ![snapshot_isolation](/assets/img/snapshot.png)
+- When a transaction is started, it is given a unique, always-increasingvii transaction ID (txid)
+- Whenever a transaction writes anything to the database, the data it writes is tagged with the transaction ID of the writer.
+- If a transaction deletes a row, the row isn’t actually deleted from the database, but it is marked for deletion by setting the deleted_by field to the ID of the transaction that requested the deletion. 
+- At some later time, when it is certain that no transaction can any longer access the deleted data, a garbage collection process in the database removes any rows marked for deletion and frees their space.
+
+##### Visibility rules for observing a consistent snapshot
+
+creation and deletion of objects:
+  1. At the start of each transaction, the database makes a list of all the other transactions that are in progress (not yet committed or aborted) at that time. Any writes that those transactions have made are ignored, even if the transactions subsequently commit.
+  2. Any writes made by aborted transactions are ignored.
+  3. Any writes made by transactions with a later transaction ID (i.e., which started after the current transaction started) are ignored, regardless of whether those transactions have committed.
+  4. All other writes are visible to the application’s queries.
+
+an object is visible if both of the following conditions are true:
+- At the time when the reader’s transaction started, the transaction that created the object had already committed.
+- The object is not marked for deletion, or if it is, the transaction that requested deletion had not yet committed at the time when the reader’s transaction started. 
+
+##### snapshot isolation and Indexes
+
+PostgreSQL:
+- One option is to have the index simply point to all versions of an object and require an index query to filter out any object versions that are not visible to the current transaction. 
+- When garbage collection removes old object versions that are no longer visible to any transaction, the corresponding index entries can also be removed.
+- if different versions of the same object can fit on the same page, avoid index updates
+
+CouchDB, Datomic, and LMDB:
+- use an append-only/copy-on-write variant that does not overwrite pages of the tree when they are updated, but instead creates a new copy of each modified page.
+
+
+##### Repeatable read and naming confusion
+
+Snapshot isolation:
+- In Oracle it is called serializable
+- In PostgreSQL and MySQL it is called repeatable read
+- IBM DB2: uses “repeatable read” to refer to serializability
+
+#### Preventing Lost Updates
+
+*lost update*: 
+- two transactions writing concurrently, write-write conflict
+- A transaction reads a value, and then another transaction modifies that value and commits. If the first transaction writes the value back, it will overwrite the second transaction’s write.
+- read-modify-write cycle
+
+##### Atomic write operations
+
+- Many databases provide atomic update operations, which remove the need to implement read-modify-write cycles in application code.
+  - implementation of atomicity
+    - *cursor stability*: taking an exclusive lock on the object when it is read so that no other transaction can read it until the update has been applied
+    - or force all atomic operations to be executed on a single thread
+
+##### Explicit locking
+
+Another option for preventing lost updates, if the database’s built-in atomic operations don’t provide the necessary functionality, is for the application to explicitly lock objects that are going to be updated.
+- a lock for read-modify-write cycle
+- involves some logic that you cannot sensibly implement as a database query
+
+##### Automatically detecting lost updates
+
+Atomic operations and locks are ways of preventing lost updates by forcing the read-modify-write cycles to happen sequentially.
+
+An alternative is to allow them to execute in parallel and, if the transaction manager detects a lost update, abort the transaction and force it to retry its read-modify-write cycle.
+
+- advantage: databases can perform this check efficiently in conjunction with snapshot isolation.
+- PostgreSQL’s repeatable read, Oracle’s serializable, and SQL Server’s snapshot isolation levels automatically detect when a lost update has occurred and abort the offending transaction.
+- MySQL/InnoDB’s repeatable read does not detect lost updates
+
+##### Compare-and-set
+
+The purpose of this operation is to avoid lost updates by allowing an update to happen only if the value has not changed since you last read it.
+
+##### Conflict resolution and replication
+
+In replicated databases (mltiple nodes), preventing lost updates takes on another dimension: since they have copies of the data on multiple nodes, and the data can potentially be modified concurrently on different nodes, some additional steps need to be taken to prevent lost updates.
+
+- a common approach in such replicated databases is to allow concurrent writes to create several conflicting versions of a value (also known as siblings), and to use application code or special data structures to resolve and merge these versions after the fact.
+- Atomic operations can work well in a replicated context, especially if they are commutative (i.e., you can apply them in a different order on different replicas, and still get the same result).
+  - incrementing a counter
+  - adding an element to a set
+- last write wins (LWW) conflict resolution method is prone to lost updates
+
+#### Write Skew and Phantoms
+
+![write_skew](/assets/img/write_skew.png)
+
+*write skew*: two transactions read the same data, and then each transaction writes to different objects and trigger conflict or violate restriction.
+- two transactions read the same data
+- two transactions believe that there is no conflict
+- write data back and conflict happens
+
+write skew is a generalization of the lost update problem.
+- Write skew can occur if two transactions read the same objects, and then update some of those objects
+- In the special case where different transactions update the same object, you get a dirty write or lost update anomaly (depending on the timing).
+
+restriction for write skew prevention:
+- Atomic single-object operations don’t help, as multiple objects are involved.
+- Current snapshot isolation and their lost update detection can't prevent write skew, requires true serializable isolation
+
+##### Phantoms causing write skew
+
+All of write skew examples follow a similar pattern:
+1. A SELECT query checks whether some requirement is satisfied by searching for rows that match some search condition
+2. Depending on the result of the first query, the application code decides how to continue
+3. If the application decides to go ahead, it makes a write (INSERT, UPDATE, or DELETE) to the database and commits the transaction.
+
+The effect of this write changes the precondition of the decision of step 2.
+- if you were to repeat the SELECT query from step 1 after commiting the write, you would get a different result
+- the write changed the set of rows matching the search condition
+
+*phantom*: This effect, where a write in one transaction changes the result of a search query in another transaction
+
+Snapshot isolation avoids phantoms in read-only queries, but in read-write transactions like the examples we discussed, phantoms can lead to particularly tricky cases of write skew.
+
+##### Solution: Materializing conflicts
+
+*materializing conflicts*: takes a phantom and turns it into a lock conflict on a concrete set of rows that exist in the database
+
+- hard and error-prone to figure out how to materialize conflicts
+- ugly to let a concurrency control mechanism leak into the application data model
+- better choice: serializable isolation level
