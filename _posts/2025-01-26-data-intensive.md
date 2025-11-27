@@ -94,6 +94,19 @@ From *Designing Data-Intensive Applications* by Martin Kleppmann
       - [Detecting writes that affect prior reads](#detecting-writes-that-affect-prior-reads)
       - [Performance of serializable snapshot isolation](#performance-of-serializable-snapshot-isolation)
     - [Summary](#summary)
+- [Trouble with Distributed Systems](#trouble-with-distributed-systems)
+  - [Faults and Partial Failures](#faults-and-partial-failures)
+    - [Cloud Computing and Supercomputing](#cloud-computing-and-supercomputing)
+    - [Unreliable Networks](#unreliable-networks)
+    - [Detecting Faults](#detecting-faults)
+    - [Timeouts and Unbounded Delays](#timeouts-and-unbounded-delays)
+  - [Unreliable Clocks](#unreliable-clocks)
+    - [Monotonic Versus Time-of-Day Clocks](#monotonic-versus-time-of-day-clocks)
+  - [Knowledge, Truth, and Lies](#knowledge-truth-and-lies)
+    - [The Truth Is Defined by the Majority](#the-truth-is-defined-by-the-majority)
+    - [Byzantine Faults](#byzantine-faults)
+  - [System Model and Reality](#system-model-and-reality)
+    - [Safety and liveness](#safety-and-liveness)
 
 
 ## Data Replication
@@ -945,3 +958,133 @@ Two-phase locking
 
 Serializable snapshot isolation (SSI)
 - A fairly new algorithm that avoids most of the downsides of the previous approaches. It uses an optimistic approach, allowing transactions to proceed without blocking. When a transaction wants to commit, it is checked, and it is aborted if the execution was not serializable.
+
+## Trouble with Distributed Systems
+
+### Faults and Partial Failures
+
+*partial failure*: 
+- In a distributed system, there may well be some parts of the system that are broken in some unpredictable way, even though other parts of the system are working fine.
+- The difficulty is that partial failures are *nondeterministic*
+
+This nondeterminism and possibility of partial failures is what makes distributed systems hard to work with.
+
+#### Cloud Computing and Supercomputing
+
+how to build large-scale computing systems:
+- *high-performance computing (HPC)*:
+  - At one end of the scale is the field of high-performance computing (HPC)
+  - Supercomputers with thousands of CPUs
+- *cloud computing*:
+  - At the other end of the scale is cloud computing
+  - multi-tenant datacenters, commodity computers connected with an IP network (often Ethernet)
+- Traditional enterprise datacenters lie somewhere between these extremes.
+
+#### Unreliable Networks
+
+*shared-nothing systems*:
+- In a shared-nothing system, each node has its own private memory and disk, and nodes communicate with each other only over network.
+
+Shared-nothing is not the only way of building systems, but it has become the dominant approach for building internet services:
+- cheap because it requires no special hardware
+- make use of commoditized cloud computing services
+- can achieve high reliability through redundancy across multiple geographically distributed datacenters.
+
+*network partition or netsplit*:
+- one part of the network is cut off from the rest due to a network fault
+
+#### Detecting Faults
+
+Rapid feedback about a remote node being down is useful, but you can’t count on it.
+
+Even if TCP acknowledges that a packet was delivered, the application may have crashed before handling it. If you want to be sure that a request was successful, you need a positive response from the application itself.
+
+In general you have to assume that you will get no response at all.
+- wait for a timeout to elapse, and eventually declare the node dead if you don’t hear back within the timeout.
+
+#### Timeouts and Unbounded Delays
+
+Prematurely declaring a node dead is problematic:
+- if the node is actually alive and in the middle of performing some action (for example, sending an email), and another node takes over, the action may end up being performed twice. 
+
+asynchronous networks have *unbounded delays* (that is, they try to deliver packets as quickly as possible, but there is no upper limit on the time it may take for a packet to arrive)
+
+most server implementations cannot guarantee that they can handle requests within some maximum time
+
+### Unreliable Clocks
+
+It is possible to synchronize clocks to some degree: 
+- the most commonly used mechanism is the Network Time Protocol (NTP), which allows the computer clock to be adjusted according to the time reported by a group of servers.
+  
+#### Monotonic Versus Time-of-Day Clocks
+
+*Time-of-day clock*:
+- A time-of-day clock is a clock that tells you the current time of day according to some calendar (also known as *wall-clock time*)
+- Time-of-day clocks are usually synchronized with NTP
+
+*monotonic clock*:
+- A monotonic clock is a clock that always moves forward, and never jumps backward.
+- suitable for measuring elapsed time
+- the *absolute value* of the clock is meaningless
+
+### Knowledge, Truth, and Lies
+
+#### The Truth Is Defined by the Majority
+
+a node cannot necessarily trust its own judgment of a situation
+
+*Fencing tokens*:
+- we need to ensure that a node that is under a false belief of being “the chosen one” cannot disrupt the rest of the system.
+- every time the lock server grants a lock or lease, it also returns a fencing token, a number that increases every time a lock is granted
+- require that every time a client sends a write request to the storage service, it must include its current fencing token.
+
+If ZooKeeper is used as lock service, the transaction ID zxid or the node version cversion can be used as fencing token.
+
+this mechanism requires the resource itself to take an active role in checking tokens by rejecting any writes with an older token than one that has already been processed—it is not sufficient to rely on clients checking their lock status themselves.
+
+#### Byzantine Faults
+
+*Byzantine fault*:
+- A Byzantine fault is a fault that is caused by a malicious actor, such as a hacker or a disgruntled employee.
+- Byzantine faults are the most difficult type of fault to deal with, because they can be caused by anything from a hardware failure to a malicious attack.
+
+*Byzantine fault-tolerant*:
+- A Byzantine fault-tolerant system is a system that can continue to operate correctly even in the presence of Byzantine faults.
+
+### System Model and Reality
+
+Regard to timing assumptions, three system models are in common use:
+
+Synchronous model
+
+- The synchronous model assumes bounded network delay, bounded process pauses, and bounded clock error. This does not imply exactly synchronized clocks or zero network delay; it just means you know that network delay, pauses, and clock drift will never exceed some fixed upper bound. The synchronous model is not a realistic model of most practical systems, because (as discussed in this chapter) unbounded delays and pauses do occur.
+
+Partially synchronous model
+
+- Partial synchrony means that a system behaves like a synchronous system most of the time, but it sometimes exceeds the bounds for network delay, process pauses, and clock drift. This is a realistic model of many systems: most of the time, networks and processes are quite well behaved—otherwise we would never be able to get anything done—but we have to reckon with the fact that any timing assumptions may be shattered occasionally. When this happens, network delay, pauses, and clock error may become arbitrarily large.
+
+Asynchronous model
+  
+- In this model, an algorithm is not allowed to make any timing assumptions—in fact, it does not even have a clock (so it cannot use timeouts). Some algorithms can be designed for the asynchronous model, but it is very restrictive.
+
+The three most common system models for nodes are:
+
+Crash-stop faults
+- In the crash-stop model, an algorithm may assume that a node can fail in only one way, namely by crashing. This means that the node may suddenly stop responding at any moment, and thereafter that node is gone forever—it never comes back.
+
+Crash-recovery faults
+- We assume that nodes may crash at any moment, and perhaps start responding again after some unknown time. In the crash-recovery model, nodes are assumed to have stable storage (i.e., nonvolatile disk storage) that is preserved across crashes, while the in-memory state is assumed to be lost.
+
+Byzantine (arbitrary) faults
+- Nodes may do absolutely anything, including trying to trick and deceive other nodes, as described in the last section.
+
+For modeling real systems, the partially synchronous model with crash-recovery faults is generally the most useful model.
+
+#### Safety and liveness
+
+- If a safety property is violated, we can point at a particular point in time at which it was broken (for example, if the uniqueness property was violated, we can identify the particular operation in which a duplicate fencing token was returned). After a safety property has been violated, the violation cannot be undone—the damage is already done.
+
+- A liveness property works the other way round: it may not hold at some point in time (for example, a node may have sent a request but not yet received a response), but there is always hope that it may be satisfied in the future (namely by receiving a response).
+
+
+
